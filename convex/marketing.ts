@@ -1,5 +1,7 @@
 import { v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './_generated/server';
+import { internal } from './_generated/api';
+import { retrier } from './retrier';
 
 export const getData = query({
     handler: async (ctx) => {
@@ -40,18 +42,51 @@ export const saveCampaign = mutation({
         id: v.optional(v.id('campaigns')),
         data: v.object({
             goal: v.string(),
-            subject: v.string(),
-            body: v.string(),
+            subject: v.optional(v.string()),
+            body: v.optional(v.string()),
         })
     },
     handler: async (ctx, { id, data }) => {
         if (id) {
-            await ctx.db.patch(id, data);
+            // Standard edit for a campaign that's already been generated.
+            await ctx.db.patch(id, { goal: data.goal, subject: data.subject, body: data.body });
         } else {
-            await ctx.db.insert('campaigns', {
-                ...data,
+            // New campaign: create a placeholder and kick off the resilient generation.
+            const campaignId = await ctx.db.insert('campaigns', {
+                goal: data.goal,
                 createdAt: Date.now(),
+                status: 'generating',
+            });
+            await retrier.run(ctx, internal.ai.generateCampaignContent, {
+                goal: data.goal,
+                campaignId,
             });
         }
+    }
+});
+
+export const updateGeneratedCampaignContent = internalMutation({
+    args: {
+        campaignId: v.id('campaigns'),
+        subject: v.string(),
+        body: v.string(),
+    },
+    handler: async (ctx, { campaignId, subject, body }) => {
+        await ctx.db.patch(campaignId, {
+            subject,
+            body,
+            status: 'complete',
+        });
+    }
+});
+
+export const failCampaignGeneration = internalMutation({
+    args: { campaignId: v.id('campaigns') },
+    handler: async (ctx, { campaignId }) => {
+        await ctx.db.patch(campaignId, {
+            status: 'failed',
+            subject: 'Content Generation Failed',
+            body: 'There was an error generating the content for this campaign. Please try creating a new one or edit this one manually.'
+        });
     }
 });

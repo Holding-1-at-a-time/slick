@@ -1,18 +1,24 @@
-import { GoogleGenAI } from '@google/genai';
-import { v } from 'convex/values';
-import { action } from './_generated/server';
-import { api } from './_generated/api';
-import { Id } from './_generated/dataModel';
+import { GoogleGenAI } from "@google/genai";
+import { v } from "convex/values";
+import { action, internalAction } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
+import { serviceDescriptionCache } from "./cache";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY});  
-;
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-
-
-
+// The public-facing action that uses the cache.
 export const generateServiceDescription = action({
   args: { serviceName: v.string() },
-  handler: async (ctx, { serviceName }) => {
+  handler: async (ctx, args): Promise<string> => {
+    return await serviceDescriptionCache.fetch(ctx, args);
+  },
+});
+
+// The core logic, now an internal action to be called by the cache.
+export const internalGenerateServiceDescription = internalAction({
+  args: { serviceName: v.string() },
+  handler: async (ctx, { serviceName }): Promise<string> => {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Generate a compelling, customer-facing description for an auto detailing service named "${serviceName}". Keep it concise (2-3 sentences) and highlight the key benefits.`,
@@ -21,73 +27,80 @@ export const generateServiceDescription = action({
   },
 });
 
-export const suggestQuoteFromPhotos = action({
-  args: { storageIds: v.array(v.id('_storage')) },
-  handler: async (ctx, { storageIds }) => {
-    const services = await ctx.runQuery(api.services.getAll);
-    const upcharges = await ctx.runQuery(api.pricing.getAllUpcharges);
-    if (!services || !upcharges) {
-      throw new Error('Could not fetch services or upcharges.');
-    }
 
-    const imageUrls = await Promise.all(
-      storageIds.map((id) => ctx.runQuery(api.files.getUrl, { storageId: id }))
-    );
+export const suggestQuoteFromPhotos = internalAction({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    try {
+      const job = await ctx.runQuery(api.jobs.get, { id: jobId });
+      if (!job || !job.visualQuoteStorageIds) {
+        throw new Error("Job or photo storage IDs not found.");
+      }
+      
+      const services = await ctx.runQuery(api.services.getAll);
+      const upcharges = await ctx.runQuery(api.pricing.getAllUpcharges);
+      if (!services || !upcharges) throw new Error("Could not fetch services or upcharges.");
+      
+      const imageUrls = await Promise.all(
+          job.visualQuoteStorageIds.map((id) => ctx.runQuery(api.files.getUrl, { storageId: id }))
+      );
 
-    const imageParts = await Promise.all(
-      imageUrls.map(async (url) => {
-        if (!url) {
-          throw new Error('Image URL not found');
-        }
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const buffer = await blob.arrayBuffer();
-        return {
-          inlineData: {
-            mimeType: blob.type,
-            data: Buffer.from(buffer).toString('base64'),
-          },
-        };
-      })
-    );
+      const imageParts = await Promise.all(
+          imageUrls.map(async (url) => {
+              if (!url) throw new Error("Image URL not found");
+              const response = await fetch(url);
+              const blob = await response.blob();
+              const buffer = await blob.arrayBuffer();
+              
+              const bytes = new Uint8Array(buffer);
+              let binary = "";
+              for (let i = 0; i < bytes.byteLength; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+              }
+              const base64Data = btoa(binary);
 
-    const prompt = `Analyze these photos of a vehicle that needs detailing. Based on the visible condition (dirt, swirls, stains, etc.), suggest a quote.
+              return {
+                  inlineData: {
+                      mimeType: blob.type,
+                      data: base64Data,
+                  },
+              };
+          })
+      );
 
-    Respond in JSON format. The JSON object should have two keys: "suggestedServiceIds" and "suggestedUpchargeIds".
+      const prompt = `Analyze these photos of a vehicle that needs detailing. Based on the visible condition (dirt, swirls, stains, etc.), suggest a quote.
 
-    - "suggestedServiceIds": An array of service IDs that are most appropriate.
-    - "suggestedUpchargeIds": An array of upcharge IDs for things like "Excessive Pet Hair" or "Heavy Stains".
+      Respond in JSON format. The JSON object should have two keys: "suggestedServiceIds" and "suggestedUpchargeIds".
 
-    Available Services:
-    ${JSON.stringify(
-      services.map((s) => ({
-        id: s._id,
-        name: s.name,
-        description: s.description,
-      }))
-    )}
+      - "suggestedServiceIds": An array of service IDs that are most appropriate.
+      - "suggestedUpchargeIds": An array of upcharge IDs for things like "Excessive Pet Hair" or "Heavy Stains".
 
-    Available Upcharges:
-    ${JSON.stringify(
-      upcharges.map((u) => ({
-        id: u._id,
-        name: u.name,
-        description: u.description,
-      }))
-    )}
+      Available Services:
+      ${JSON.stringify(services.map(s => ({ id: s._id, name: s.name, description: s.description })))}
 
-    Analyze the images carefully and select the most relevant services and upcharges. For example, if you see a lot of dog hair on the seats, include the "Excessive Pet Hair" upcharge. If the paint looks dull and scratched, suggest a paint correction service.
-    `;
+      Available Upcharges:
+      ${JSON.stringify(upcharges.map(u => ({ id: u._id, name: u.name, description: u.description })))}
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts: [...imageParts, { text: prompt }] },
-      config: { responseMimeType: 'application/json' },
-    });
-    if (response.text) {
-      return JSON.parse(response.text);
-    } else {
-      throw new Error('Failed to generate content');
+      Analyze the images carefully and select the most relevant services and upcharges. For example, if you see a lot of dog hair on the seats, include the "Excessive Pet Hair" upcharge. If the paint looks dull and scratched, suggest a paint correction service.
+      `;
+      
+      const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: { parts: [...imageParts, { text: prompt }] },
+          config: { responseMimeType: "application/json" }
+      });
+
+      const suggestions = JSON.parse(response.text);
+      
+      await ctx.runMutation(internal.jobs.updateVisualQuoteSuccess, {
+          jobId,
+          suggestedServiceIds: suggestions.suggestedServiceIds || [],
+          suggestedUpchargeIds: suggestions.suggestedUpchargeIds || [],
+      });
+
+    } catch (error) {
+        console.error(`Visual quote generation failed for jobId ${jobId}:`, error);
+        await ctx.runMutation(internal.jobs.updateVisualQuoteFailure, { jobId });
     }
   },
 });
@@ -127,38 +140,41 @@ export const suggestAppointmentSlots = action({
       config: { responseMimeType: 'application/json' },
     });
 
-    if (response.text) {
-      return JSON.parse(response.text);
-    } else {
-      throw new Error('Failed to generate content');
+        return JSON.parse(response.text);
     }
-  },
 });
 
-export const generateCampaignContent = action({
-  args: { goal: v.string() },
-  handler: async (ctx, { goal }) => {
-    const company = await ctx.runQuery(api.company.get);
+export const generateCampaignContent = internalAction({
+    args: { goal: v.string(), campaignId: v.id('campaigns') },
+    handler: async (ctx, { goal, campaignId }) => {
+        try {
+            const company = await ctx.runQuery(api.company.get);
+            
+            const prompt = `I am the owner of an auto detailing business called "${company?.name || 'Detailing Pro'}".
+            I want to create an email marketing campaign with the following goal: "${goal}".
+            
+            Please generate a compelling subject line and email body for this campaign. The tone should be professional but friendly.
+            
+            Respond ONLY with a JSON object with two keys: "subject" and "body". The body should be a single string with newline characters (\\n) for paragraphs.
+            `;
 
-    const prompt = `I am the owner of an auto detailing business called "${company?.name || 'Detailing Pro'
-      }".
-        I want to create an email marketing campaign with the following goal: "${goal}".
-        
-        Please generate a compelling subject line and email body for this campaign. The tone should be professional but friendly.
-        
-        Respond ONLY with a JSON object with two keys: "subject" and "body". The body should be a single string with newline characters (\\n) for paragraphs.
-        `;
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+            });
+            
+            const content = JSON.parse(response.text);
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    });
+            await ctx.runMutation(internal.marketing.updateGeneratedCampaignContent, {
+                campaignId,
+                subject: content.subject,
+                body: content.body,
+            });
 
-    if (!response.text) {
-      throw new Error('Failed to generate content');
-    } else {
-      return JSON.parse(response.text);
+        } catch (error) {
+            console.error(`Campaign generation failed for campaignId ${campaignId}:`, error);
+            await ctx.runMutation(internal.marketing.failCampaignGeneration, { campaignId });
+        }
     }
-  },
 });
