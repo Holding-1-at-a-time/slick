@@ -1,11 +1,16 @@
+/// <reference types="vite/client" />
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ClerkProvider } from '@clerk/clerk-react';
 import App from './App';
 
-// Use the environment variable if available, otherwise fall back to a public placeholder test key.
-// This prevents the application from crashing if the environment variable is not set.
-const VITE_CLERK_PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY || 'pk_test_YnVyc3Rpbmcta2lkLTU1LmNsZXJrLmFjY291bnRzLmRldiQ';
+// This is the official way to access Vite environment variables.
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!PUBLISHABLE_KEY) {
+  throw new Error("Missing Publishable Key. Make sure VITE_CLERK_PUBLISHABLE_KEY is set in your environment.");
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,7 +20,7 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={VITE_CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
       <App />
     </ClerkProvider>
   </React.StrictMode>
