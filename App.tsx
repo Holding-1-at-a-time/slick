@@ -11,17 +11,10 @@ import ReportsPage from './components/ReportsPage';
 import InventoryPage from './components/InventoryPage';
 import MarketingPage from './components/MarketingPage';
 import CustomerPortalPage from './components/CustomerPortalPage';
-import StripeOnboarding from './components/StripeOnboarding'; // Import the new component
+import StripeOnboarding from './components/StripeOnboarding';
+import LandingPage from './components/LandingPage'; // Import the new Landing Page
 import { initialServices, initialPricingMatrices, initialUpcharges, initialChecklists, initialCustomers, initialVehicles, initialJobs, initialAppointments, initialUsers, initialCompany, initialProducts, initialSuppliers, initialPromotions } from './data/mockData';
 import { Service, PricingMatrix, Upcharge, Checklist, Customer, Vehicle, Job, Payment, Appointment, User, Company, JobPhoto, Page, Product, Supplier, Promotion, Campaign } from './types';
-
-const SignedOutPage = () => (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-center px-4">
-        <h1 className="text-4xl font-bold text-white mb-4">Detailing Pro</h1>
-        <p className="text-lg text-gray-400">Please sign in to manage your business.</p>
-        <p className="text-sm text-gray-500 mt-8">You will be redirected to the sign-in page shortly.</p>
-    </div>
-);
 
 function App() {
   const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -564,7 +557,7 @@ function App() {
   return (
     <>
       <SignedOut>
-        <SignedOutPage />
+        <LandingPage />
       </SignedOut>
       <SignedIn>
         <div className="min-h-screen bg-gray-900 text-gray-100">
