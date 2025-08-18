@@ -1,3 +1,15 @@
+/**
+    * @description      : 
+    * @author           : rrome
+    * @group            : 
+    * @created          : 18/08/2025 - 05:53:41
+    * 
+    * MODIFICATION LOG
+    * - Version         : 1.0.0
+    * - Date            : 18/08/2025
+    * - Author          : rrome
+    * - Modification    : 
+**/
 import React, { useState } from 'react';
 import { BriefcaseIcon, CreditCardIcon, UserGroupIcon, PlusIcon } from './icons';
 import { User, Job, Customer, Vehicle, Service, PricingMatrix, Upcharge, Promotion } from '../types';
@@ -41,7 +53,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
     jobsForCurrentUser = [], 
     customers = [], 
     vehicles = [], 
-    onViewJob = () => {},
+    onViewJob = (_jobId: string) => {},
     services,
     pricingMatrices,
     upcharges,

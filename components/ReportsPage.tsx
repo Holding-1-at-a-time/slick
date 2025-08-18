@@ -137,13 +137,13 @@ const ReportsPage: React.FC<ReportsPageProps> = ({ jobs, services, users, custom
         if (!vehicleSearch.trim()) return null;
         const lowerSearch = vehicleSearch.toLowerCase();
         
-        const customerMap = new Map(customers.map(c => [c.id, c.name.toLowerCase()]));
+        const customerMap = new Map<string, string>(customers.map(c => [c.id, c.name.toLowerCase()]));
 
         const vehicle = vehicles.find(v => 
             v.vin.toLowerCase().includes(lowerSearch) ||
             v.make.toLowerCase().includes(lowerSearch) ||
             v.model.toLowerCase().includes(lowerSearch) ||
-            (customerMap.get(v.customerId) || '').includes(lowerSearch)
+            (customerMap.get(v.customerId) ?? '').includes(lowerSearch)
         );
 
         if (!vehicle) return { vehicle: null, jobs: [] };
