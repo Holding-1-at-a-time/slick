@@ -11,21 +11,8 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
 interface DashboardPageProps {
-    activeJobs: number;
-    revenueThisMonth: number;
-    totalCustomers: number;
     currentUser: User | null;
-    jobsForCurrentUser?: Job[];
-    customers?: Customer[];
-    vehicles?: Vehicle[];
-    onViewJob?: (jobId: string) => void;
-    // Props for creating jobs
-    services: Service[];
-    pricingMatrices: PricingMatrix[];
-    upcharges: Upcharge[];
-    promotions: Promotion[];
-    onSaveJob: (job: Job) => void;
-    onSaveCustomer: (customer: Customer, vehicles: Vehicle[]) => Promise<Customer>;
+    onViewJob: (jobId: string) => void;
 }
 
 const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode }> = ({ title, value, icon }) => (
