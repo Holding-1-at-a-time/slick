@@ -1,5 +1,7 @@
 import { v } from 'convex/values';
 import { mutation } from './_generated/server';
+import { Id } from './_generated/dataModel';
+import { query } from './_generated/server';
 
 export const saveCustomerWithVehicles = mutation({
     args: {
@@ -20,7 +22,7 @@ export const saveCustomerWithVehicles = mutation({
         })),
     },
     handler: async (ctx, { customerId, customerData, vehiclesData }) => {
-        let finalCustomerId: string;
+        let finalCustomerId: Id<"customers">;
 
         if (customerId) {
             // Update existing customer
@@ -41,7 +43,7 @@ export const saveCustomerWithVehicles = mutation({
         for (const vehicle of vehiclesData) {
             await ctx.db.insert('vehicles', {
                 ...vehicle,
-                customerId: finalCustomerId,
+                customerId: finalCustomerId as Id<"customers">,
             });
         }
         
@@ -58,5 +60,11 @@ export const remove = mutation({
             await ctx.db.delete(vehicle._id);
         }
         await ctx.db.delete(id);
+    }
+});
+
+export const getAll = query({
+    handler: async (ctx) => {
+        return await ctx.db.query("customers").collect();
     }
 });

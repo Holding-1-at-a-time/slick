@@ -151,7 +151,11 @@ export const savePayment = mutation({
         const job = await ctx.db.get(jobId);
         if (!job) throw new Error("Job not found");
         
-        const newPayment = { ...payment, id: `pay_${Date.now()}`};
+        const newPayment = { 
+          ...payment, 
+          method: payment.method as "Cash" | "Credit Card" | "Check" | "Bank Transfer" | "Other",
+          id: `pay_${Date.now()}`
+        };
         const payments = [...(job.payments || []), newPayment];
         const paymentReceived = payments.reduce((sum, p) => sum + p.amount, 0);
         

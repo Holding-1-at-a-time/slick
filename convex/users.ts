@@ -40,13 +40,10 @@ export const getDashboardData = query({
         if (!currentUser) return null;
         
         let jobsForCurrentUserQuery = ctx.db.query("jobs").order('desc');
-        if(currentUser.role === 'technician') {
+        if (currentUser.role === 'technician') {
             const technicianId = currentUser._id;
             jobsForCurrentUserQuery = jobsForCurrentUserQuery.filter(q => 
-                q.or(
-                    q.eq(q.field("assignedTechnicianIds"), [technicianId]),
-                    q.eq(q.field("assignedTechnicianIds"), technicianId)
-                )
+                q.eq(q.field("assignedTechnicianIds"), [technicianId])
             );
         }
         const jobsForCurrentUser = await jobsForCurrentUserQuery.collect();

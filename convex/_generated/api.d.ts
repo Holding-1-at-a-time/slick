@@ -29,6 +29,7 @@ import type * as pricing from "../pricing.js";
 import type * as reports from "../reports.js";
 import type * as services from "../services.js";
 import type * as users from "../users.js";
+import type * as vehicles from "../vehicles.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   reports: typeof reports;
   services: typeof services;
   users: typeof users;
+  vehicles: typeof vehicles;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,
