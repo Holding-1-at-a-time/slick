@@ -25,7 +25,8 @@
     "@convex-dev/rag": "^0.5.2",
     "convex-helpers": "^0.1.104",
     "@convex-dev/action-retrier": "^0.2.1",
-    "@clerk/backend": "^2.9.2"
+    "@clerk/backend": "^2.9.2",
+    "@convex-dev/action-cache": "^0.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

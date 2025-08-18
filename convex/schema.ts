@@ -110,6 +110,8 @@ export default defineSchema({
     appliedPromotionId: v.optional(v.id('promotions')),
     discountAmount: v.optional(v.number()),
     publicLinkKey: v.optional(v.string()),
+    visualQuoteStatus: v.optional(v.union(v.literal('pending'), v.literal('complete'), v.literal('failed'))),
+    visualQuoteStorageIds: v.optional(v.array(v.id('_storage'))),
   }).index('by_customer', ['customerId']).index('by_public_link_key', ['publicLinkKey']),
 
   appointments: defineTable({

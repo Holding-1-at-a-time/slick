@@ -1,7 +1,9 @@
 import { v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './_generated/server';
 import { Id } from './_generated/dataModel';
 import { customAlphabet } from 'nanoid';
+import { retrier } from './retrier';
+import { internal } from './_generated/api';
 
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
@@ -110,7 +112,15 @@ export const save = mutation({
     },
     handler: async (ctx, { id, ...data }) => {
         if (id) {
-            await ctx.db.patch(id, data);
+            const existingJob = await ctx.db.get(id);
+            const updatedJobItems = data.jobItems.map(newItem => {
+                const existingItem = existingJob?.jobItems.find(i => i.id === newItem.id);
+                return {
+                    ...newItem,
+                    checklistCompletedItems: existingItem?.checklistCompletedItems,
+                };
+            });
+            await ctx.db.patch(id, {...data, jobItems: updatedJobItems});
             return id;
         } else {
             return await ctx.db.insert('jobs', {
@@ -126,6 +136,100 @@ export const save = mutation({
         }
     }
 });
+
+export const createDraft = mutation({
+    args: {
+        customerId: v.id('customers'),
+        vehicleId: v.id('vehicles'),
+    },
+    handler: async (ctx, args) => {
+        return await ctx.db.insert('jobs', {
+            ...args,
+            status: 'estimate',
+            estimateDate: Date.now(),
+            totalAmount: 0,
+            paymentReceived: 0,
+            paymentStatus: 'unpaid',
+            jobItems: [],
+            customerApprovalStatus: 'pending',
+            publicLinkKey: nanoid(),
+        });
+    }
+});
+
+export const initiateVisualQuote = mutation({
+    args: {
+        jobId: v.id('jobs'),
+        storageIds: v.array(v.id('_storage')),
+    },
+    handler: async (ctx, { jobId, storageIds }) => {
+        await ctx.db.patch(jobId, {
+            visualQuoteStatus: 'pending',
+            visualQuoteStorageIds: storageIds,
+            jobItems: [],
+            totalAmount: 0,
+            discountAmount: 0,
+        });
+        await retrier.run(ctx, internal.ai.suggestQuoteFromPhotos, { jobId });
+    }
+});
+
+export const updateVisualQuoteSuccess = internalMutation({
+    args: {
+        jobId: v.id('jobs'),
+        suggestedServiceIds: v.array(v.id('services')),
+        suggestedUpchargeIds: v.array(v.id('upcharges')),
+    },
+    handler: async (ctx, { jobId, suggestedServiceIds, suggestedUpchargeIds }) => {
+        const services = await ctx.db.query('services').collect();
+        const upcharges = await ctx.db.query('upcharges').collect();
+
+        const newJobItems: any[] = suggestedServiceIds.map(serviceId => {
+            const service = services.find(s => s._id === serviceId);
+            if (!service) return null;
+            return {
+                id: `item_${Date.now()}_${serviceId}`,
+                serviceId,
+                quantity: 1,
+                unitPrice: service.basePrice,
+                appliedPricingRuleIds: [],
+                addedUpchargeIds: [],
+                total: service.basePrice,
+            };
+        }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+        if (newJobItems.length > 0 && suggestedUpchargeIds.length > 0) {
+            newJobItems[0].addedUpchargeIds.push(...suggestedUpchargeIds);
+        }
+        
+        for (const item of newJobItems) {
+            let itemTotal = item.unitPrice;
+            for (const upchargeId of item.addedUpchargeIds) {
+                const upcharge = upcharges.find(u => u._id === upchargeId);
+                if (upcharge) {
+                    itemTotal += upcharge.isPercentage ? itemTotal * (upcharge.defaultAmount / 100) : upcharge.defaultAmount;
+                }
+            }
+            item.total = itemTotal;
+        }
+
+        const totalAmount = newJobItems.reduce((sum, item) => sum + item.total, 0);
+
+        await ctx.db.patch(jobId, {
+            jobItems: newJobItems,
+            visualQuoteStatus: 'complete',
+            totalAmount,
+        });
+    }
+});
+
+export const updateVisualQuoteFailure = internalMutation({
+    args: { jobId: v.id('jobs') },
+    handler: async (ctx, { jobId }) => {
+        await ctx.db.patch(jobId, { visualQuoteStatus: 'failed' });
+    }
+});
+
 
 export const remove = mutation({
     args: { id: v.id('jobs') },

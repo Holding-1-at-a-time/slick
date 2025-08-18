@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Job, Customer, Vehicle, Service, PricingMatrix, Upcharge, JobItem, PricingRule, Promotion } from '../types';
 import Modal from './Modal';
-import { PlusIcon, TrashIcon, SparklesIcon } from './icons';
+import { PlusIcon, TrashIcon, SparklesIcon, ExclamationTriangleIcon } from './icons';
 import CustomerFormModal from './CustomerFormModal';
 
 interface JobFormModalProps {
@@ -30,12 +29,17 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
   const [promoCode, setPromoCode] = useState('');
   
   const [visualQuoteFiles, setVisualQuoteFiles] = useState<File[]>([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
+  const [isUploading, setIsUploading] = useState(false);
+  
+  const [currentJobId, setCurrentJobId] = useState<Id<'jobs'> | null>(null);
+  
   const data = useQuery(api.jobs.getDataForForm);
+  const currentJob = useQuery(api.jobs.get, currentJobId ? { id: currentJobId } : "skip");
+
   const saveJob = useMutation(api.jobs.save);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
-  const suggestQuoteAction = useAction(api.ai.suggestQuoteFromPhotos);
+  const createDraftJob = useMutation(api.jobs.createDraft);
+  const initiateVisualQuote = useMutation(api.jobs.initiateVisualQuote);
 
   const customers = data?.customers ?? [];
   const vehicles = data?.vehicles ?? [];
@@ -51,6 +55,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
   useEffect(() => {
     if (isOpen) {
       if (jobToEdit) {
+        setCurrentJobId(jobToEdit._id);
         setFormData({
           customerId: jobToEdit.customerId,
           vehicleId: jobToEdit.vehicleId,
@@ -65,15 +70,23 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
         const appliedPromo = promotions.find(p => p._id === jobToEdit.appliedPromotionId);
         setPromoCode(appliedPromo?.code || '');
       } else {
+        setCurrentJobId(null);
         setFormData({ status: 'estimate', estimateDate: Date.now(), notes: '', discountAmount: 0 });
         setJobItems([]);
         setSelectedCustomerId('');
         setPromoCode('');
       }
       setVisualQuoteFiles([]);
-      setIsAnalyzing(false);
+      setIsUploading(false);
     }
   }, [jobToEdit, isOpen, promotions]);
+
+  useEffect(() => {
+      if (currentJob) {
+        setJobItems(currentJob.jobItems);
+        setFormData(prev => ({ ...prev, totalAmount: currentJob.totalAmount }));
+      }
+  }, [currentJob]);
   
   const subtotal = useMemo(() => jobItems.reduce((acc, item) => acc + item.total, 0), [jobItems]);
 
@@ -172,7 +185,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
         discountAmount,
         totalAmount,
     };
-    await saveJob({ id: jobToEdit?._id, ...finalJobData });
+    await saveJob({ id: currentJobId ?? undefined, ...finalJobData });
     onClose();
   };
   
@@ -181,33 +194,50 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
 
   const handleVisualQuote = async () => {
     if (visualQuoteFiles.length === 0) return alert("Please upload at least one photo.");
-    setIsAnalyzing(true);
+    if (!formData.customerId || !formData.vehicleId) {
+        return alert("Please select a customer and vehicle first.");
+    }
+    setIsUploading(true);
     try {
-      const storageIds = await Promise.all(visualQuoteFiles.map(async (file) => {
-        const postUrl = await generateUploadUrl();
-        const result = await fetch(postUrl, { method: "POST", headers: { 'Content-Type': file.type }, body: file });
-        const { storageId } = await result.json();
-        return storageId;
-      }));
-      
-      const suggestions = await suggestQuoteAction({ storageIds });
-      
-      const newJobItems: JobItem[] = suggestions.suggestedServiceIds.map((serviceId: Id<'services'>) => {
-          const service = services.find(s => s._id === serviceId);
-          if (!service) return null;
-          return { id: `item_${Date.now()}_${service._id}`, serviceId, quantity: 1, unitPrice: service.basePrice, appliedPricingRuleIds: [], addedUpchargeIds: [], total: service.basePrice };
-      }).filter((item: JobItem | null): item is JobItem => item !== null);
+        let jobIdToUse = currentJobId;
+        if (!jobIdToUse) {
+            jobIdToUse = await createDraftJob({
+                customerId: formData.customerId as Id<'customers'>,
+                vehicleId: formData.vehicleId as Id<'vehicles'>,
+            });
+            setCurrentJobId(jobIdToUse);
+        }
 
-      if (newJobItems.length > 0 && suggestions.suggestedUpchargeIds.length > 0) {
-          newJobItems[0].addedUpchargeIds = [...newJobItems[0].addedUpchargeIds, ...suggestions.suggestedUpchargeIds];
-      }
-      setJobItems(newJobItems);
-      setVisualQuoteFiles([]);
+        const storageIds = await Promise.all(visualQuoteFiles.map(async (file) => {
+            const postUrl = await generateUploadUrl();
+            const result = await fetch(postUrl, { method: "POST", headers: { 'Content-Type': file.type }, body: file });
+            const { storageId } = await result.json();
+            return storageId;
+        }));
+
+        await initiateVisualQuote({ jobId: jobIdToUse, storageIds });
+        setVisualQuoteFiles([]);
     } catch (error) {
-      console.error("Error with Visual Quoting:", error);
-      alert("Failed to analyze photos. Please check the console for details.");
+        console.error("Error with Visual Quoting:", error);
+        alert("Failed to start photo analysis. Please check the console for details.");
     } finally {
-      setIsAnalyzing(false);
+        setIsUploading(false);
+    }
+  };
+
+  const renderVisualQuoteStatus = () => {
+    if (isUploading) {
+      return <p className="text-center text-sm text-blue-300 animate-pulse">Uploading photos...</p>;
+    }
+    switch(currentJob?.visualQuoteStatus) {
+        case 'pending':
+            return <div className="flex items-center justify-center text-sm text-blue-300 animate-pulse"><svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Analyzing in background...</div>;
+        case 'failed':
+            return <div className="text-center"><p className="text-sm text-red-400 mb-2">Analysis failed. Please try again.</p><button type="button" onClick={handleVisualQuote} className="w-full flex items-center justify-center bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm"><SparklesIcon className="w-5 h-5 mr-2" />Retry Analysis</button></div>
+        case 'complete':
+            return <p className="text-center text-sm text-green-400">AI analysis complete. Review suggested items below.</p>;
+        default:
+             return <button type="button" onClick={handleVisualQuote} disabled={isUploading || visualQuoteFiles.length === 0} className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm disabled:bg-gray-500 disabled:cursor-not-allowed"><SparklesIcon className="w-5 h-5 mr-2" />Analyze Photos & Suggest Services</button>;
     }
   };
 
@@ -239,16 +269,14 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
             <h3 className="text-lg font-medium text-gray-200 mb-2">Visual Quoting (AI Assist)</h3>
             <div className="p-4 bg-gray-900 rounded-md space-y-3">
               <div>
-                <label htmlFor="visual-quote-files" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg text-center text-sm w-full block">{visualQuoteFiles.length > 0 ? `${visualQuoteFiles.length} photo(s) selected` : "Upload Vehicle Photos"}</label>
-                <input id="visual-quote-files" type="file" multiple accept="image/*" onChange={handleFileChange} className="hidden" />
+                <label htmlFor="visual-quote-files" className={`cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg text-center text-sm w-full block ${(!formData.customerId || !formData.vehicleId) && 'opacity-50 cursor-not-allowed'}`}>{visualQuoteFiles.length > 0 ? `${visualQuoteFiles.length} photo(s) selected` : "Upload Vehicle Photos"}</label>
+                <input id="visual-quote-files" type="file" multiple accept="image/*" onChange={handleFileChange} className="hidden" disabled={!formData.customerId || !formData.vehicleId} />
+                {(!formData.customerId || !formData.vehicleId) && <p className="text-xs text-center text-yellow-400 mt-2">Please select a customer and vehicle to enable uploads.</p>}
               </div>
               {visualQuoteFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2">{visualQuoteFiles.map((file, index) => <img key={index} src={URL.createObjectURL(file)} alt={`preview ${index}`} className="w-16 h-16 rounded-md object-cover" />)}</div>
               )}
-              <button type="button" onClick={handleVisualQuote} disabled={isAnalyzing || visualQuoteFiles.length === 0} className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm disabled:bg-gray-500 disabled:cursor-not-allowed">
-                <SparklesIcon className="w-5 h-5 mr-2" />
-                {isAnalyzing ? 'Analyzing...' : 'Analyze Photos & Suggest Services'}
-              </button>
+              {renderVisualQuoteStatus()}
             </div>
           </div>
 
