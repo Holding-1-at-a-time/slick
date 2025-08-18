@@ -140,8 +140,9 @@ export default defineSchema({
 
   campaigns: defineTable({
     goal: v.string(),
-    subject: v.string(),
-    body: v.string(),
+    subject: v.optional(v.string()),
+    body: v.optional(v.string()),
     createdAt: v.number(),
+    status: v.union(v.literal('generating'), v.literal('complete'), v.literal('failed')),
   }),
 });

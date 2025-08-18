@@ -16,6 +16,7 @@ import MarketingPage from './components/MarketingPage';
 import CustomerPortalPage from './components/CustomerPortalPage';
 import StripeOnboarding from './components/StripeOnboarding';
 import LandingPage from './components/LandingPage';
+import KnowledgeBasePage from './components/KnowledgeBasePage';
 import { Page } from './types';
 
 function App() {
@@ -38,7 +39,7 @@ function App() {
 
   // When user switches, if they are on a page they can't access, move them to dashboard
   useEffect(() => {
-    const adminPages: Page[] = ['management', 'settings', 'reports', 'inventory', 'marketing', 'stripe-onboarding'];
+    const adminPages: Page[] = ['management', 'settings', 'reports', 'inventory', 'marketing', 'stripe-onboarding', 'knowledge-base'];
     if (currentUser?.role === 'technician' && adminPages.includes(activePage)) {
         setActivePage('dashboard');
     }
@@ -111,6 +112,9 @@ function App() {
        case 'marketing':
         if (currentUser.role !== 'admin') return null;
         return <MarketingPage />;
+       case 'knowledge-base':
+        if (currentUser.role !== 'admin') return null;
+        return <KnowledgeBasePage />;
       default:
         return <DashboardPage currentUser={currentUser} onViewJob={handleViewJobDetail} />;
     }

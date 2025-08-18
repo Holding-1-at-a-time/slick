@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { action, internalAction } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
@@ -34,10 +34,19 @@ export const suggestQuoteFromPhotos = action({
             const response = await fetch(url);
             const blob = await response.blob();
             const buffer = await blob.arrayBuffer();
+            
+            // Convert ArrayBuffer to Base64 without Node.js Buffer
+            const bytes = new Uint8Array(buffer);
+            let binary = "";
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64Data = btoa(binary);
+
             return {
                 inlineData: {
                     mimeType: blob.type,
-                    data: Buffer.from(buffer).toString("base64"),
+                    data: base64Data,
                 },
             };
         })
@@ -104,35 +113,37 @@ export const suggestAppointmentSlots = action({
     }
 });
 
-export const generateCampaignContent = action({
-    args: { goal: v.string() },
-    handler: async (ctx, { goal }) => {
-        const company = await ctx.runQuery(api.company.get);
-        
-        const prompt = `I am the owner of an auto detailing business called "${company?.name || 'Detailing Pro'}".
-        I want to create an email marketing campaign with the following goal: "${goal}".
-        
-        Please generate a compelling subject line and email body for this campaign. The tone should be professional but friendly.
-        
-        Respond ONLY with a JSON object with two keys: "subject" and "body". The body should be a single string with newline characters (\\n) for paragraphs.
-        `;
+export const generateCampaignContent = internalAction({
+    args: { goal: v.string(), campaignId: v.id('campaigns') },
+    handler: async (ctx, { goal, campaignId }) => {
+        try {
+            const company = await ctx.runQuery(api.company.get);
+            
+            const prompt = `I am the owner of an auto detailing business called "${company?.name || 'Detailing Pro'}".
+            I want to create an email marketing campaign with the following goal: "${goal}".
+            
+            Please generate a compelling subject line and email body for this campaign. The tone should be professional but friendly.
+            
+            Respond ONLY with a JSON object with two keys: "subject" and "body". The body should be a single string with newline characters (\\n) for paragraphs.
+            `;
 
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: { responseMimeType: "application/json" }
-        });
-        
-        return JSON.parse(response.text);
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+            });
+            
+            const content = JSON.parse(response.text);
+
+            await ctx.runMutation(internal.marketing.updateGeneratedCampaignContent, {
+                campaignId,
+                subject: content.subject,
+                body: content.body,
+            });
+
+        } catch (error) {
+            console.error(`Campaign generation failed for campaignId ${campaignId}:`, error);
+            await ctx.runMutation(internal.marketing.failCampaignGeneration, { campaignId });
+        }
     }
 });
-
-// Helper queries that were assumed by actions above
-declare module "convex/_generated/api" {
-  export interface Queries {
-    "pricing.getAllUpcharges": () => Promise<any[]>;
-    "jobs.get": (args: {id: Id<"jobs">}) => Promise<any>;
-    "appointments.getAll": () => Promise<any[]>;
-    "company.get": () => Promise<any>;
-  }
-}

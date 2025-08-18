@@ -1,11 +1,50 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Promotion, Campaign } from '../types';
-import { PlusIcon, EditIcon, TrashIcon, MegaphoneIcon } from './icons';
+import { PlusIcon, EditIcon, TrashIcon, MegaphoneIcon, ExclamationTriangleIcon } from './icons';
 import PromotionFormModal from './PromotionFormModal';
 import CampaignFormModal from './CampaignFormModal';
+
+const CampaignCard: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
+    const getStatusIndicator = () => {
+        switch (campaign.status) {
+            case 'generating':
+                return (
+                    <div className="flex items-center text-xs text-blue-300 animate-pulse">
+                        <svg className="animate-spin h-4 w-4 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        Generating...
+                    </div>
+                );
+            case 'failed':
+                return (
+                    <div className="flex items-center text-xs text-red-400">
+                        <ExclamationTriangleIcon className="w-4 h-4 mr-1.5" />
+                        Generation Failed
+                    </div>
+                );
+            case 'complete':
+                 return <p className="text-xs text-gray-500">Created: {new Date(campaign.createdAt).toLocaleDateString()}</p>;
+            default:
+                return null;
+        }
+    }
+    
+    return (
+        <div className="bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col justify-between min-h-[160px]">
+            <div>
+                <p className="font-semibold text-white truncate">{campaign.subject || `Goal: ${campaign.goal}`}</p>
+                {campaign.status === 'complete' && <p className="text-sm text-gray-300 mt-2 line-clamp-2">{campaign.body}</p>}
+                {campaign.status === 'generating' && <p className="text-sm text-gray-400 mt-2">AI is crafting your email content. This may take a moment...</p>}
+                 {campaign.status === 'failed' && <p className="text-sm text-red-300 mt-2 line-clamp-2">{campaign.body}</p>}
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-700/50 flex justify-end items-center">
+                {getStatusIndicator()}
+            </div>
+        </div>
+    );
+};
+
 
 const MarketingPage: React.FC = () => {
     const data = useQuery(api.marketing.getData);
@@ -16,21 +55,15 @@ const MarketingPage: React.FC = () => {
     const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
     const [promotionToEdit, setPromotionToEdit] = useState<Promotion | null>(null);
     const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-    const [campaignToEdit, setCampaignToEdit] = useState<Campaign | null>(null);
-
+    
     const handleOpenPromotionModal = (promotion: Promotion | null) => {
         setPromotionToEdit(promotion);
         setIsPromotionModalOpen(true);
     };
 
-    const handleOpenCampaignModal = (campaign: Campaign | null) => {
-        setCampaignToEdit(campaign);
-        setIsCampaignModalOpen(true);
-    };
-
     const handleCloseModals = () => {
         setIsPromotionModalOpen(false); setPromotionToEdit(null);
-        setIsCampaignModalOpen(false); setCampaignToEdit(null);
+        setIsCampaignModalOpen(false);
     }
     
     const handleDeletePromotion = (id: string) => {
@@ -54,15 +87,15 @@ const MarketingPage: React.FC = () => {
                     </div>
                 </section>
                 <section id="campaigns">
-                     <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Email Campaigns</h2><button onClick={() => handleOpenCampaignModal(null)} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"><PlusIcon className="w-5 h-5 mr-2" />New Campaign</button></header>
+                     <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Email Campaigns</h2><button onClick={() => setIsCampaignModalOpen(true)} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"><PlusIcon className="w-5 h-5 mr-2" />New Campaign</button></header>
                     <div className="space-y-4">
-                        {campaigns.map(campaign => (<div key={campaign._id} className="bg-gray-800 rounded-lg shadow-lg p-4"><p className="font-semibold text-white">{campaign.subject}</p><p className="text-xs text-gray-400 mt-1 italic">Goal: {campaign.goal}</p><p className="text-sm text-gray-300 mt-2 truncate">{campaign.body}</p><p className="text-xs text-gray-500 mt-3 text-right">Created: {new Date(campaign.createdAt).toLocaleDateString()}</p></div>))}
+                        {campaigns.map(campaign => <CampaignCard key={campaign._id} campaign={campaign} />)}
                         {campaigns.length === 0 && (<div className="text-center py-16 bg-gray-800 rounded-lg"><MegaphoneIcon className="w-12 h-12 mx-auto text-gray-600" /><h3 className="text-xl text-gray-400 mt-4">No campaigns found.</h3><p className="text-gray-500 mt-2">Click "New Campaign" to engage your customers.</p></div>)}
                     </div>
                 </section>
             </div>
             <PromotionFormModal isOpen={isPromotionModalOpen} onClose={handleCloseModals} promotionToEdit={promotionToEdit} />
-            <CampaignFormModal isOpen={isCampaignModalOpen} onClose={handleCloseModals} campaignToEdit={campaignToEdit} />
+            <CampaignFormModal isOpen={isCampaignModalOpen} onClose={handleCloseModals} campaignToEdit={null} />
         </div>
     );
 };
