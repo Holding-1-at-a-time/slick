@@ -1,5 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Id } from '../convex/_generated/dataModel';
 import { PricingMatrix, PricingRule, Service } from '../types';
 import Modal from './Modal';
 import { PlusIcon, TrashIcon } from './icons';
@@ -7,17 +10,19 @@ import { PlusIcon, TrashIcon } from './icons';
 interface PricingMatrixFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (matrix: PricingMatrix) => void;
   matrixToEdit: PricingMatrix | null;
-  allServices: Service[];
 }
 
-const PricingMatrixFormModal: React.FC<PricingMatrixFormModalProps> = ({ isOpen, onClose, onSave, matrixToEdit, allServices }) => {
-  const [formData, setFormData] = useState<Omit<PricingMatrix, 'id'>>({
+const PricingMatrixFormModal: React.FC<PricingMatrixFormModalProps> = ({ isOpen, onClose, matrixToEdit }) => {
+  const [formData, setFormData] = useState<Omit<PricingMatrix, '_id' | '_creationTime'>>({
     name: '',
     appliesToServiceIds: [],
     rules: [],
   });
+
+  const allServices = useQuery(api.services.getAll);
+  const createMatrix = useMutation(api.pricing.createMatrix);
+  const updateMatrix = useMutation(api.pricing.updateMatrix);
 
   useEffect(() => {
     if (matrixToEdit) {
@@ -39,7 +44,7 @@ const PricingMatrixFormModal: React.FC<PricingMatrixFormModalProps> = ({ isOpen,
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
   
-  const handleServiceSelection = (serviceId: string) => {
+  const handleServiceSelection = (serviceId: Id<'services'>) => {
     setFormData(prev => {
         const newServiceIds = prev.appliesToServiceIds.includes(serviceId)
             ? prev.appliesToServiceIds.filter(id => id !== serviceId)
@@ -71,10 +76,14 @@ const PricingMatrixFormModal: React.FC<PricingMatrixFormModalProps> = ({ isOpen,
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = matrixToEdit ? matrixToEdit.id : `new_${Date.now()}`;
-    onSave({ ...formData, id });
+    if (matrixToEdit) {
+        await updateMatrix({ id: matrixToEdit._id, ...formData });
+    } else {
+        await createMatrix(formData);
+    }
+    onClose();
   };
 
   return (
@@ -97,16 +106,16 @@ const PricingMatrixFormModal: React.FC<PricingMatrixFormModalProps> = ({ isOpen,
         <div>
             <h4 className="text-sm font-medium text-gray-300 mb-2">Apply to Services</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-4 bg-gray-900 rounded-md max-h-48 overflow-y-auto">
-              {allServices.map(s => (
-                <div key={s.id} className="flex items-center">
+              {(allServices || []).map(s => (
+                <div key={s._id} className="flex items-center">
                   <input
                     type="checkbox"
-                    id={`matrix-service-${s.id}`}
-                    checked={formData.appliesToServiceIds.includes(s.id)}
-                    onChange={() => handleServiceSelection(s.id)}
+                    id={`matrix-service-${s._id}`}
+                    checked={formData.appliesToServiceIds.includes(s._id)}
+                    onChange={() => handleServiceSelection(s._id)}
                     className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
                   />
-                  <label htmlFor={`matrix-service-${s.id}`} className="ml-2 text-sm text-gray-300">{s.name}</label>
+                  <label htmlFor={`matrix-service-${s._id}`} className="ml-2 text-sm text-gray-300">{s.name}</label>
                 </div>
               ))}
             </div>

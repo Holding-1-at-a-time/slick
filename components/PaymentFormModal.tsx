@@ -1,17 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { Job, Payment } from '../types';
 import Modal from './Modal';
 
 interface PaymentFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (jobId: string, payment: Payment) => void;
   job: Job | null;
 }
 
-const PaymentFormModal: React.FC<PaymentFormModalProps> = ({ isOpen, onClose, onSave, job }) => {
+const PaymentFormModal: React.FC<PaymentFormModalProps> = ({ isOpen, onClose, job }) => {
   const [amount, setAmount] = useState(0);
   const [notes, setNotes] = useState('');
+  const savePayment = useMutation(api.jobs.savePayment);
 
   const amountDue = job ? job.totalAmount - job.paymentReceived : 0;
 
@@ -22,28 +25,28 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({ isOpen, onClose, on
     }
   }, [job, isOpen, amountDue]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!job || amount <= 0) {
         alert("Payment amount must be greater than zero.");
         return;
     };
 
-    const newPayment: Payment = {
-        id: `pay_${Date.now()}`,
+    const newPayment: Omit<Payment, 'id'> = {
         amount,
         paymentDate: Date.now(),
         method: 'Credit Card', // Hardcoded as the form simulates a card payment
         notes,
     };
     
-    onSave(job.id, newPayment);
+    await savePayment({ jobId: job._id, payment: newPayment });
+    onClose();
   };
   
   if (!job) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Payment for Job #${job.id.substring(0, 6)}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Payment for Job #${job._id.substring(0, 6)}`}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="p-4 bg-gray-900 rounded-lg grid grid-cols-2 gap-4 text-center">
             <div>
@@ -67,7 +70,7 @@ const PaymentFormModal: React.FC<PaymentFormModalProps> = ({ isOpen, onClose, on
                 required
                 min="0.01"
                 step="0.01"
-                max={amountDue.toFixed(2)}
+                max={amountDue > 0 ? amountDue.toFixed(2) : undefined}
                 className="block w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:ring-blue-500 focus:border-blue-500"
             />
         </div>
