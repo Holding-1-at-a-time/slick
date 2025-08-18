@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { Customer, Vehicle } from '../types';
 import Modal from './Modal';
 import { PlusIcon, TrashIcon } from './icons';
@@ -7,47 +9,47 @@ import { PlusIcon, TrashIcon } from './icons';
 interface CustomerFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (customer: Customer, vehicles: Vehicle[]) => void;
   customerToEdit: Customer | null;
-  allVehicles: Vehicle[];
+  vehiclesForCustomer: Vehicle[] | null;
 }
 
-const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, onSave, customerToEdit, allVehicles }) => {
-  const [customerData, setCustomerData] = useState<Omit<Customer, 'id'>>({
+const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, customerToEdit, vehiclesForCustomer }) => {
+  const [customerData, setCustomerData] = useState<Omit<Customer, '_id' | '_creationTime'>>({
     name: '',
     phone: '',
     email: '',
     address: '',
     internalNotes: ''
   });
-  const [vehicles, setVehicles] = useState<Omit<Vehicle, 'id' | 'customerId'>[]>([]);
+  const [vehicles, setVehicles] = useState<Omit<Vehicle, '_id' | '_creationTime' | 'customerId'>[]>([]);
+
+  const saveCustomer = useMutation(api.customers.saveCustomerWithVehicles);
 
   useEffect(() => {
-    if (customerToEdit) {
-      setCustomerData({
-        name: customerToEdit.name,
-        phone: customerToEdit.phone,
-        email: customerToEdit.email,
-        address: customerToEdit.address || '',
-        internalNotes: customerToEdit.internalNotes || '',
-      });
-      const customerVehicles = allVehicles
-        .filter(v => v.customerId === customerToEdit.id)
-        .map(({ id, customerId, ...rest}) => ({ ...rest, tempId: id })); // Use a tempId to track existing
-      setVehicles(customerVehicles as any);
-    } else {
-      setCustomerData({
-        name: '', phone: '', email: '', address: '', internalNotes: ''
-      });
-      setVehicles([]);
+    if (isOpen) {
+      if (customerToEdit) {
+        setCustomerData({
+          name: customerToEdit.name,
+          phone: customerToEdit.phone,
+          email: customerToEdit.email,
+          address: customerToEdit.address || '',
+          internalNotes: customerToEdit.internalNotes || '',
+        });
+        setVehicles(vehiclesForCustomer || []);
+      } else {
+        setCustomerData({
+          name: '', phone: '', email: '', address: '', internalNotes: ''
+        });
+        setVehicles([]);
+      }
     }
-  }, [customerToEdit, allVehicles, isOpen]);
+  }, [customerToEdit, vehiclesForCustomer, isOpen]);
 
   const handleCustomerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setCustomerData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
   
-  const handleVehicleChange = (index: number, field: keyof Omit<Vehicle, 'id' | 'customerId'>, value: string | number) => {
+  const handleVehicleChange = (index: number, field: keyof Omit<Vehicle, '_id' | '_creationTime' | 'customerId'>, value: string | number) => {
     const newVehicles = [...vehicles];
     (newVehicles[index] as any)[field] = value;
     setVehicles(newVehicles);
@@ -61,22 +63,14 @@ const CustomerFormModal: React.FC<CustomerFormModalProps> = ({ isOpen, onClose, 
     setVehicles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const customerId = customerToEdit ? customerToEdit.id : `cust_${Date.now()}`;
-    const finalCustomer: Customer = { id: customerId, ...customerData };
-    
-    const finalVehicles: Vehicle[] = vehicles.map((v, i) => ({
-      id: (v as any).tempId || `v_${Date.now()}_${i}`,
-      customerId: customerId,
-      vin: v.vin,
-      make: v.make,
-      model: v.model,
-      year: Number(v.year),
-      color: v.color,
-    }));
-
-    onSave(finalCustomer, finalVehicles);
+    await saveCustomer({
+        customerId: customerToEdit?._id,
+        customerData,
+        vehiclesData: vehicles.map(({vin, make, model, year, color}) => ({vin, make, model, year: Number(year), color}))
+    });
+    onClose();
   };
 
   return (

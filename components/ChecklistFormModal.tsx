@@ -1,23 +1,27 @@
 
 import React, { useState, useEffect } from 'react';
-import { Checklist, Service } from '../types';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Checklist } from '../types';
 import Modal from './Modal';
 import { PlusIcon, TrashIcon } from './icons';
 
 interface ChecklistFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (checklist: Checklist) => void;
   checklistToEdit: Checklist | null;
-  allServices: Service[];
 }
 
-const ChecklistFormModal: React.FC<ChecklistFormModalProps> = ({ isOpen, onClose, onSave, checklistToEdit, allServices }) => {
-  const [formData, setFormData] = useState<Omit<Checklist, 'id'>>({
+const ChecklistFormModal: React.FC<ChecklistFormModalProps> = ({ isOpen, onClose, checklistToEdit }) => {
+  const [formData, setFormData] = useState<Omit<Checklist, '_id' | '_creationTime'>>({
     name: '',
-    serviceId: '',
+    serviceId: '' as any,
     tasks: [],
   });
+
+  const allServices = useQuery(api.services.getAll);
+  const createChecklist = useMutation(api.checklists.create);
+  const updateChecklist = useMutation(api.checklists.update);
 
   useEffect(() => {
     if (checklistToEdit) {
@@ -27,8 +31,7 @@ const ChecklistFormModal: React.FC<ChecklistFormModalProps> = ({ isOpen, onClose
         tasks: checklistToEdit.tasks || [],
       });
     } else {
-      // Set a default service if available, but only on initial load
-      const defaultServiceId = allServices.length > 0 ? allServices[0].id : '';
+      const defaultServiceId = allServices && allServices.length > 0 ? allServices[0]._id : '' as any;
       setFormData({
         name: '',
         serviceId: defaultServiceId,
@@ -50,28 +53,28 @@ const ChecklistFormModal: React.FC<ChecklistFormModalProps> = ({ isOpen, onClose
   };
 
   const addTask = () => {
-    setFormData(prev => ({
-        ...prev,
-        tasks: [...prev.tasks, '']
-    }));
+    setFormData(prev => ({ ...prev, tasks: [...prev.tasks, ''] }));
   };
   
   const removeTask = (index: number) => {
-    setFormData(prev => ({
-        ...prev,
-        tasks: prev.tasks.filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, tasks: prev.tasks.filter((_, i) => i !== index) }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.serviceId) {
         alert('Please select a service for this checklist.');
         return;
     }
-    const finalTasks = formData.tasks.map(t => t.trim()).filter(t => t); // clean up tasks
-    const id = checklistToEdit ? checklistToEdit.id : `new_${Date.now()}`;
-    onSave({ ...formData, id, tasks: finalTasks });
+    const finalTasks = formData.tasks.map(t => t.trim()).filter(t => t);
+    const dataToSave = { ...formData, tasks: finalTasks };
+
+    if (checklistToEdit) {
+      await updateChecklist({ id: checklistToEdit._id, ...dataToSave });
+    } else {
+      await createChecklist(dataToSave);
+    }
+    onClose();
   };
 
   return (
@@ -102,8 +105,8 @@ const ChecklistFormModal: React.FC<ChecklistFormModalProps> = ({ isOpen, onClose
                 className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
                 <option value="" disabled>Select a service...</option>
-                {allServices.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                {(allServices || []).map(s => (
+                    <option key={s._id} value={s._id}>{s.name}</option>
                 ))}
             </select>
         </div>

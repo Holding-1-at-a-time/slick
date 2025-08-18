@@ -1,30 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { useQuery, useMutation, useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Id } from '../convex/_generated/dataModel';
 import { Service } from '../types';
 import Modal from './Modal';
 import { MagicIcon } from './icons';
 
-// It's recommended to initialize the API client once.
-// Ensure API_KEY is set in your environment variables.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 interface ServiceFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (service: Service) => void;
   serviceToEdit: Service | null;
-  allServices: Service[];
 }
 
-const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, onSave, serviceToEdit, allServices }) => {
-  const [formData, setFormData] = useState<Omit<Service, 'id'>>({
+const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, serviceToEdit }) => {
+  const [formData, setFormData] = useState<Omit<Service, '_id' | '_creationTime'>>({
     name: '',
     description: '',
     basePrice: 0,
     isPackage: false,
     serviceIds: [],
     isDealerPackage: false,
+    estimatedDurationHours: 1,
   });
+
+  const allServices = useQuery(api.services.getAll);
+  const createService = useMutation(api.services.create);
+  const updateService = useMutation(api.services.update);
+  const generateDescriptionAction = useAction(api.ai.generateServiceDescription);
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
         isPackage: serviceToEdit.isPackage,
         serviceIds: serviceToEdit.serviceIds || [],
         isDealerPackage: serviceToEdit.isDealerPackage,
+        estimatedDurationHours: serviceToEdit.estimatedDurationHours || 1,
       });
     } else {
       setFormData({
@@ -45,25 +48,21 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
         isPackage: false,
         serviceIds: [],
         isDealerPackage: false,
+        estimatedDurationHours: 1,
       });
     }
   }, [serviceToEdit, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const target = e.target;
-    const name = target.name;
-
-    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
-      setFormData(prev => ({ ...prev, [name]: target.checked }));
-    } else if (target instanceof HTMLInputElement && target.type === 'number') {
-      // Use parseFloat, but provide a fallback for empty strings which parse to NaN
-      setFormData(prev => ({ ...prev, [name]: parseFloat(target.value) || 0 }));
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: target.value }));
+      setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
     }
   };
 
-  const handleServiceSelection = (serviceId: string) => {
+  const handleServiceSelection = (serviceId: Id<'services'>) => {
     setFormData(prev => {
         const newServiceIds = prev.serviceIds.includes(serviceId)
             ? prev.serviceIds.filter(id => id !== serviceId)
@@ -79,16 +78,8 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
     }
     setIsGenerating(true);
     try {
-        const prompt = `Generate a compelling, concise service description for an auto detailing service named "${formData.name}". The description should be suitable for a customer-facing menu. Keep it to 1-2 sentences and sound professional and appealing.`;
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        
-        const description = response.text;
+        const description = await generateDescriptionAction({ serviceName: formData.name });
         setFormData(prev => ({ ...prev, description: description.trim() }));
-
     } catch (error) {
         console.error("Error generating description:", error);
         alert('Failed to generate description. Please check the console for details.');
@@ -97,14 +88,17 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
     }
   };
 
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = serviceToEdit ? serviceToEdit.id : `new_${Date.now()}`;
-    onSave({ ...formData, id });
+    if (serviceToEdit) {
+      await updateService({ id: serviceToEdit._id, ...formData });
+    } else {
+      await createService(formData);
+    }
+    onClose();
   };
   
-  const availableServicesForPackage = allServices.filter(s => !s.isPackage && s.id !== serviceToEdit?.id);
+  const availableServicesForPackage = allServices?.filter(s => !s.isPackage && s._id !== serviceToEdit?._id) || [];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={serviceToEdit ? 'Edit Service' : 'Add New Service'}>
@@ -145,42 +139,44 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
             className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
           ></textarea>
         </div>
-        <div>
-          <label htmlFor="basePrice" className="block text-sm font-medium text-gray-300">Base Price ($)</label>
-          <input
-            type="number"
-            name="basePrice"
-            id="basePrice"
-            value={formData.basePrice}
-            onChange={handleChange}
-            required
-            min="0"
-            step="0.01"
-            className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="basePrice" className="block text-sm font-medium text-gray-300">Base Price ($)</label>
+            <input
+              type="number"
+              name="basePrice"
+              id="basePrice"
+              value={formData.basePrice}
+              onChange={handleChange}
+              required
+              min="0"
+              step="0.01"
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="estimatedDurationHours" className="block text-sm font-medium text-gray-300">Est. Duration (hrs)</label>
+            <input
+              type="number"
+              name="estimatedDurationHours"
+              id="estimatedDurationHours"
+              value={formData.estimatedDurationHours}
+              onChange={handleChange}
+              required
+              min="0.5"
+              step="0.5"
+              className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
         </div>
 
         <div className="flex items-center space-x-8">
             <div className="flex items-center">
-              <input
-                id="isPackage"
-                name="isPackage"
-                type="checkbox"
-                checked={formData.isPackage}
-                onChange={handleChange}
-                className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-              />
+              <input id="isPackage" name="isPackage" type="checkbox" checked={formData.isPackage} onChange={handleChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
               <label htmlFor="isPackage" className="ml-2 block text-sm text-gray-300">Is a Package?</label>
             </div>
             <div className="flex items-center">
-              <input
-                id="isDealerPackage"
-                name="isDealerPackage"
-                type="checkbox"
-                checked={formData.isDealerPackage}
-                onChange={handleChange}
-                className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-              />
+              <input id="isDealerPackage" name="isDealerPackage" type="checkbox" checked={formData.isDealerPackage} onChange={handleChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
               <label htmlFor="isDealerPackage" className="ml-2 block text-sm text-gray-300">Dealer Package?</label>
             </div>
         </div>
@@ -190,15 +186,15 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
             <h4 className="text-sm font-medium text-gray-300 mb-2">Included Services</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-4 bg-gray-900 rounded-md max-h-48 overflow-y-auto">
               {availableServicesForPackage.map(s => (
-                <div key={s.id} className="flex items-center">
+                <div key={s._id} className="flex items-center">
                   <input
                     type="checkbox"
-                    id={`service-${s.id}`}
-                    checked={formData.serviceIds.includes(s.id)}
-                    onChange={() => handleServiceSelection(s.id)}
+                    id={`service-${s._id}`}
+                    checked={formData.serviceIds.includes(s._id)}
+                    onChange={() => handleServiceSelection(s._id)}
                     className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
                   />
-                  <label htmlFor={`service-${s.id}`} className="ml-2 text-sm text-gray-300">{s.name}</label>
+                  <label htmlFor={`service-${s._id}`} className="ml-2 text-sm text-gray-300">{s.name}</label>
                 </div>
               ))}
             </div>
@@ -206,17 +202,10 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, on
         )}
 
         <div className="flex justify-end space-x-3 pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="py-2 px-4 bg-gray-600 hover:bg-gray-700 text-gray-100 rounded-md transition-colors"
-          >
+          <button type="button" onClick={onClose} className="py-2 px-4 bg-gray-600 hover:bg-gray-700 text-gray-100 rounded-md transition-colors">
             Cancel
           </button>
-          <button
-            type="submit"
-            className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
-          >
+          <button type="submit" className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">
             Save Service
           </button>
         </div>

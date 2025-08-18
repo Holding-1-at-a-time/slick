@@ -1,16 +1,8 @@
-/// <reference types="vite/client" />
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ClerkProvider } from '@clerk/clerk-react';
 import App from './App';
-
-// This is the official way to access Vite environment variables.
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!PUBLISHABLE_KEY) {
-  throw new Error("Missing Publishable Key. Make sure VITE_CLERK_PUBLISHABLE_KEY is set in your environment.");
-}
+import { ConvexClientProvider } from './ConvexClientProvider';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -20,8 +12,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+    <ConvexClientProvider>
       <App />
-    </ClerkProvider>
+    </ConvexClientProvider>
   </React.StrictMode>
 );

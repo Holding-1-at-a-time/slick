@@ -64,7 +64,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({
   const isTechnician = currentUser?.role === 'technician';
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
 
-  const handleSaveAndCloseJobModal = (job: Job) => {
+   * Saves the job and closes the job modal.
+   *
+   * @param {Job} job - The job to be saved.
+   * @return {void} This function does not return anything.
+   */
+
     onSaveJob(job);
     setIsJobModalOpen(false);
   };

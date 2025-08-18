@@ -1,22 +1,26 @@
 
 import React, { useState, useEffect } from 'react';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { Upcharge } from '../types';
 import Modal from './Modal';
 
 interface UpchargeFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (upcharge: Upcharge) => void;
   upchargeToEdit: Upcharge | null;
 }
 
-const UpchargeFormModal: React.FC<UpchargeFormModalProps> = ({ isOpen, onClose, onSave, upchargeToEdit }) => {
-  const [formData, setFormData] = useState<Omit<Upcharge, 'id'>>({
+const UpchargeFormModal: React.FC<UpchargeFormModalProps> = ({ isOpen, onClose, upchargeToEdit }) => {
+  const [formData, setFormData] = useState<Omit<Upcharge, '_id' | '_creationTime'>>({
     name: '',
     description: '',
     defaultAmount: 0,
     isPercentage: false,
   });
+
+  const createUpcharge = useMutation(api.pricing.createUpcharge);
+  const updateUpcharge = useMutation(api.pricing.updateUpcharge);
 
   useEffect(() => {
     if (upchargeToEdit) {
@@ -37,22 +41,22 @@ const UpchargeFormModal: React.FC<UpchargeFormModalProps> = ({ isOpen, onClose, 
   }, [upchargeToEdit, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const target = e.target;
-    const name = target.name;
-
-    if (target instanceof HTMLInputElement && target.type === 'checkbox') {
-        setFormData(prev => ({ ...prev, [name]: target.checked }));
-    } else if (target instanceof HTMLInputElement && target.type === 'number') {
-        setFormData(prev => ({ ...prev, [name]: parseFloat(target.value) || 0 }));
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+        setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-        setFormData(prev => ({ ...prev, [name]: target.value }));
+        setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseFloat(value) || 0 : value }));
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = upchargeToEdit ? upchargeToEdit.id : `new_${Date.now()}`;
-    onSave({ ...formData, id });
+    if (upchargeToEdit) {
+      await updateUpcharge({ id: upchargeToEdit._id, ...formData });
+    } else {
+      await createUpcharge(formData);
+    }
+    onClose();
   };
 
   return (
