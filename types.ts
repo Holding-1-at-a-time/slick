@@ -18,14 +18,20 @@ export type Job = Doc<"jobs"> & {
 export type Appointment = Doc<"appointments">;
 export type User = Doc<"users">;
 export type Company = Doc<"company"> & {
-    enableAutomaticInventory?: boolean;
+    enableSmartInventory?: boolean;
 };
-export type Supplier = Doc<"suppliers">;
+export type Supplier = Doc<"suppliers"> & {
+    estimatedLeadTimeDays?: number;
+};
 export type Product = Doc<"products"> & {
     lastCostPerUnit?: number;
+    unit?: string;
+    predictedDepletionDate?: number;
+    dailyConsumptionRate?: number;
 };
 export type Promotion = Doc<"promotions">;
 export type Campaign = Doc<"campaigns">;
 export type InventoryLog = Doc<"inventoryLog">;
+export type Notification = Doc<"notifications">;
 
 export type Page = 'dashboard' | 'management' | 'schedule' | 'settings' | 'reports' | 'inventory' | 'marketing' | 'stripe-onboarding' | 'knowledge-base';

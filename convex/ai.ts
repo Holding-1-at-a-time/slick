@@ -1,13 +1,13 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { v } from "convex/values";
-import { action, internalAction } from "./_generated/server";
+import { action, internalAction, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { serviceDescriptionCache } from "./cache";
+import { productAttributeCache, productSuggestionCache, serviceDescriptionCache, inventoryQuestionCache } from "./cache";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-// The public-facing action that uses the cache.
+// --- Service Description Generation ---
 export const generateServiceDescription = action({
   args: { serviceName: v.string() },
   handler: async (ctx, args): Promise<string> => {
@@ -15,7 +15,6 @@ export const generateServiceDescription = action({
   },
 });
 
-// The core logic, now an internal action to be called by the cache.
 export const internalGenerateServiceDescription = internalAction({
   args: { serviceName: v.string() },
   handler: async (ctx, { serviceName }): Promise<string> => {
@@ -27,7 +26,7 @@ export const internalGenerateServiceDescription = internalAction({
   },
 });
 
-
+// --- Visual Quote Generation ---
 export const suggestQuoteFromPhotos = internalAction({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
@@ -105,6 +104,7 @@ export const suggestQuoteFromPhotos = internalAction({
   },
 });
 
+// --- Appointment Scheduling ---
 export const suggestAppointmentSlots = action({
     args: { jobId: v.id('jobs') },
     handler: async (ctx, { jobId }) => {
@@ -140,6 +140,7 @@ export const suggestAppointmentSlots = action({
     }
 });
 
+// --- Marketing Campaign Generation ---
 export const generateCampaignContent = internalAction({
     args: { goal: v.string(), campaignId: v.id('campaigns') },
     handler: async (ctx, { goal, campaignId }) => {
@@ -173,4 +174,124 @@ export const generateCampaignContent = internalAction({
             await ctx.runMutation(internal.marketing.failCampaignGeneration, { campaignId });
         }
     }
+});
+
+// --- Smart Inventory ---
+export const suggestProductAttributes = action({
+  args: { productName: v.string() },
+  handler: (ctx, args) => productAttributeCache.fetch(ctx, args),
+});
+
+export const internalSuggestProductAttributes = internalAction({
+  args: { productName: v.string() },
+  handler: async (_, { productName }) => {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `For the auto detailing product "${productName}", suggest a category and a common unit of measurement.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            category: { type: Type.STRING, description: 'e.g., "Chemicals", "Pads", "Tools"' },
+            unit: { type: Type.STRING, description: 'e.g., "bottle", "gallon", "unit", "pack"' },
+          },
+        },
+      },
+    });
+    return JSON.parse(response.text);
+  },
+});
+
+export const suggestProductsForService = action({
+    args: { serviceName: v.string(), serviceDescription: v.string() },
+    handler: (ctx, args) => productSuggestionCache.fetch(ctx, args),
+});
+
+export const internalSuggestProductsForService = internalAction({
+    args: { serviceName: v.string(), serviceDescription: v.string() },
+    handler: async (ctx, { serviceName, serviceDescription }) => {
+        const allProducts = await ctx.runQuery(internal.ai.getAllProducts);
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `Given the service "${serviceName}" (Description: "${serviceDescription}"), which of the following products are likely to be used?
+          
+          Available Products:
+          ${JSON.stringify(allProducts.map(p => ({ id: p._id, name: p.name, category: p.category})))}
+          `,
+          config: {
+             responseMimeType: "application/json",
+             responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    productIds: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                    }
+                }
+             }
+          }
+        });
+        const result = JSON.parse(response.text);
+        return (result.productIds || []) as Id<'products'>[];
+    }
+});
+
+export const answerInventoryQuestion = action({
+    args: { query: v.string() },
+    handler: (ctx, args) => inventoryQuestionCache.fetch(ctx, args),
+});
+
+export const internalAnswerInventoryQuestion = internalAction({
+    args: { query: v.string() },
+    handler: async (ctx, { query }) => {
+        const allProducts = await ctx.runQuery(internal.ai.getAllProducts);
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `You are an AI assistant for an inventory system. A user is asking a question about stock. Identify the product they are asking about from the list of available products.
+            Respond ONLY with a JSON object with one key: "productName". The value should be the full name of the product you identified. If you cannot confidently identify a single product, return {"productName": null}.
+
+            Available products:
+            ${JSON.stringify(allProducts.map(p => p.name))}
+
+            User question: "${query}"`,
+            config: { responseMimeType: "application/json" }
+        });
+
+        const result = JSON.parse(response.text);
+        if (!result.productName) {
+            return "Sorry, I couldn't identify the product you're asking about. Could you be more specific?";
+        }
+        
+        const product = allProducts.find(p => p.name === result.productName);
+        if (!product) {
+             return `I found a product match for "${result.productName}", but it doesn't seem to be in the inventory list anymore.`;
+        }
+
+        return `We have ${product.stockLevel} ${product.unit || ''}(s) of ${product.name} left in stock.`;
+    }
+});
+
+export const generateReorderSuggestion = internalAction({
+    args: {
+        productName: v.string(),
+        stockLevel: v.number(),
+        supplierName: v.string(),
+        leadTimeDays: v.optional(v.number()),
+    },
+    handler: async (_, { productName, stockLevel, supplierName, leadTimeDays }) => {
+        const leadTimeInfo = leadTimeDays 
+            ? `The supplier, ${supplierName}, has an estimated lead time of ${leadTimeDays} days.`
+            : `The supplier is ${supplierName}.`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `The product "${productName}" is low on stock, with only ${stockLevel} units remaining. ${leadTimeInfo} Generate a concise, helpful reorder suggestion. Be direct and actionable.`,
+        });
+        return response.text;
+    }
+});
+
+export const getAllProducts = internalQuery({
+    handler: (ctx) => ctx.db.query('products').collect(),
 });

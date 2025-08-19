@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Product, Supplier } from '../types';
 import Modal from './Modal';
+import { MagicIcon } from './icons';
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -19,7 +19,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, pr
     supplierId: '' as any,
     stockLevel: 0,
     reorderPoint: 0,
+    unit: '',
   });
+
+  const company = useQuery(api.company.get);
+  const enableSmartInventory = company?.enableSmartInventory;
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const suggestAttributes = useAction(api.ai.suggestProductAttributes);
 
   const createProduct = useMutation(api.inventory.createProduct);
   const updateProduct = useMutation(api.inventory.updateProduct);
@@ -32,15 +38,31 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, pr
         supplierId: productToEdit.supplierId,
         stockLevel: productToEdit.stockLevel,
         reorderPoint: productToEdit.reorderPoint,
+        unit: productToEdit.unit || '',
       });
     } else {
-      setFormData({ name: '', category: '', supplierId: suppliers[0]?._id, stockLevel: 0, reorderPoint: 0 });
+      setFormData({ name: '', category: '', supplierId: suppliers[0]?._id, stockLevel: 0, reorderPoint: 0, unit: '' });
     }
   }, [productToEdit, isOpen, suppliers]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: name.includes('stock') || name.includes('reorder') ? parseInt(value) || 0 : value }));
+  };
+
+  const handleSuggest = async () => {
+    if (!formData.name) return;
+    setIsSuggesting(true);
+    try {
+        const result = await suggestAttributes({ productName: formData.name });
+        if (result.category) setFormData(prev => ({ ...prev, category: result.category }));
+        if (result.unit) setFormData(prev => ({ ...prev, unit: result.unit }));
+    } catch (e) {
+        console.error(e);
+        alert("AI suggestion failed.");
+    } finally {
+        setIsSuggesting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,9 +79,18 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, pr
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={productToEdit ? 'Edit Product' : 'Add New Product'}>
       <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+            <div className="flex justify-between items-center">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-300">Product Name</label>
+                {enableSmartInventory && (
+                    <button type="button" onClick={handleSuggest} disabled={isSuggesting || !formData.name} className="flex items-center space-x-1 text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"><MagicIcon className="w-4 h-4" /><span>{isSuggesting ? 'Thinking...' : 'Suggest Details'}</span></button>
+                )}
+            </div>
+            <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label htmlFor="name" className="block text-sm font-medium text-gray-300">Product Name</label><input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
             <div><label htmlFor="category" className="block text-sm font-medium text-gray-300">Category</label><input type="text" name="category" id="category" value={formData.category} onChange={handleChange} required placeholder="e.g., Chemicals" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
+            <div><label htmlFor="unit" className="block text-sm font-medium text-gray-300">Unit</label><input type="text" name="unit" id="unit" value={formData.unit} onChange={handleChange} placeholder="e.g., bottle, gallon" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
         </div>
         <div><label htmlFor="supplierId" className="block text-sm font-medium text-gray-300">Supplier</label><select name="supplierId" id="supplierId" value={formData.supplierId} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"><option value="" disabled>Select a supplier...</option>{suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}</select></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -159,7 +159,7 @@ export const save = mutation({
         
         if (newDoc?.status === 'completed' && !newDoc.inventoryDebited) {
             const company = await ctx.db.query('company').first();
-            if (company?.enableAutomaticInventory) {
+            if (company?.enableSmartInventory) {
                 await ctx.scheduler.runAfter(0, internal.inventory.debitInventoryForJob, { jobId });
             }
         }
@@ -348,7 +348,7 @@ export const savePayment = mutation({
         
         if (newDoc?.status === 'completed' && !newDoc.inventoryDebited) {
             const company = await ctx.db.query('company').first();
-            if (company?.enableAutomaticInventory) {
+            if (company?.enableSmartInventory) {
                 await ctx.scheduler.runAfter(0, internal.inventory.debitInventoryForJob, { jobId });
             }
         }

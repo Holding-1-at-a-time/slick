@@ -58,7 +58,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
     const handleCompanySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (companyData) {
-            await saveCompany({ id: companyData._id, name: companyData.name, defaultLaborRate: companyData.defaultLaborRate, enableAutomaticInventory: !!companyData.enableAutomaticInventory });
+            await saveCompany({ id: companyData._id, name: companyData.name, defaultLaborRate: companyData.defaultLaborRate, enableSmartInventory: !!companyData.enableSmartInventory });
             alert('Company profile saved!');
         }
     };
@@ -92,10 +92,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
                           </div>
                            <div className="pt-4 border-t border-gray-700">
                                 <label className="flex items-center cursor-pointer">
-                                    <input type="checkbox" name="enableAutomaticInventory" checked={!!companyData.enableAutomaticInventory} onChange={handleCompanyChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
-                                    <span className="ml-3 text-sm font-medium text-gray-300">Enable Automatic Inventory Deduction</span>
+                                    <input type="checkbox" name="enableSmartInventory" checked={!!companyData.enableSmartInventory} onChange={handleCompanyChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
+                                    <span className="ml-3 text-sm font-medium text-gray-300">Enable Smart Inventory Mode</span>
                                 </label>
-                                <p className="text-xs text-gray-500 ml-7">When enabled, inventory will be automatically debited when a job is marked as "Completed".</p>
+                                <p className="text-xs text-gray-500 ml-7">Turns on AI-powered features like auto-fill for products, service-to-product suggestions, and automatic stock deduction.</p>
                             </div>
                           <div className="flex justify-end pt-2"><button type="submit" className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Save Company Profile</button></div>
                       </form>

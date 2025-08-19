@@ -267,3 +267,15 @@ export const CloudArrowUpIcon = ({ className }: { className?: string }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
     </svg>
 );
+
+export const BuildingStorefrontIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.25a.75.75 0 01-.75-.75v-7.5c0-.71.55-1.28.125-1.25.125-.71.55-1.28 1.25-1.25h14.25c.7 0 1.25.54 1.25 1.25v7.5c0 .41-.34.75-.75.75H13.5m-4.5 0v-4.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75v4.5m-4.5 0h4.5m-4.5 0a.75.75 0 01-.75-.75V15c0-.41.34-.75.75-.75h4.5c.41 0 .75.34.75.75v5.25a.75.75 0 01-.75.75H9.75m-4.5 0a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h13.5a2.25 2.25 0 012.25 2.25v7.5a2.25 2.25 0 01-2.25 2.25H15M12 9.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0112 9.75z" />
+    </svg>
+);
+
+export const BellIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+);

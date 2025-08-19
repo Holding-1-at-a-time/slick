@@ -14,7 +14,7 @@ export default defineSchema({
     logoUrl: v.optional(v.string()),
     defaultLaborRate: v.number(),
     stripeConnectAccountId: v.optional(v.string()),
-    enableAutomaticInventory: v.optional(v.boolean()),
+    enableSmartInventory: v.optional(v.boolean()),
   }),
 
   services: defineTable({
@@ -126,10 +126,14 @@ export default defineSchema({
     endTime: v.number(),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    status: v.union(v.literal('scheduled'), v.literal('inProgress'), v.literal('completed'), v.literal('cancelled')),
+    status: v.union(v.union(v.literal('scheduled'), v.literal('inProgress'), v.literal('completed'), v.literal('cancelled'))),
   }).index('by_job', ['jobId']),
 
-  suppliers: defineTable({ name: v.string(), contactEmail: v.optional(v.string()) }),
+  suppliers: defineTable({
+    name: v.string(),
+    contactEmail: v.optional(v.string()),
+    estimatedLeadTimeDays: v.optional(v.number()),
+  }),
 
   products: defineTable({
     name: v.string(),
@@ -137,7 +141,10 @@ export default defineSchema({
     supplierId: v.id('suppliers'),
     stockLevel: v.number(),
     reorderPoint: v.number(),
+    unit: v.optional(v.string()), // e.g., 'bottle', 'gallon', 'unit'
     lastCostPerUnit: v.optional(v.number()),
+    predictedDepletionDate: v.optional(v.number()),
+    dailyConsumptionRate: v.optional(v.number()),
   }),
   
   inventoryLog: defineTable({
@@ -165,4 +172,12 @@ export default defineSchema({
     createdAt: v.number(),
     status: v.union(v.literal('generating'), v.literal('complete'), v.literal('failed')),
   }),
+  
+  notifications: defineTable({
+    productId: v.id('products'),
+    title: v.string(),
+    message: v.string(),
+    isRead: v.boolean(),
+    timestamp: v.number(),
+  }).index('by_read_status', ['isRead']),
 });

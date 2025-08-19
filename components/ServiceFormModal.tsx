@@ -24,12 +24,18 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
     estimatedDurationHours: 1,
     productsUsed: [],
   });
+  
+  const company = useQuery(api.company.get);
+  const enableSmartInventory = company?.enableSmartInventory;
 
   const allServices = useQuery(api.services.getAll);
   const createService = useMutation(api.services.create);
   const updateService = useMutation(api.services.update);
   const generateDescriptionAction = useAction(api.ai.generateServiceDescription);
+  const suggestProductsAction = useAction(api.ai.suggestProductsForService);
+
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSuggestingProducts, setIsSuggestingProducts] = useState(false);
 
   useEffect(() => {
     if (serviceToEdit) {
@@ -94,6 +100,26 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
     setFormData(prev => ({ ...prev, productsUsed: (prev.productsUsed || []).filter((_, i) => i !== index) }));
   };
 
+  const handleSuggestProducts = async () => {
+    if (!formData.name) return;
+    setIsSuggestingProducts(true);
+    try {
+        const suggestedIds = await suggestProductsAction({ serviceName: formData.name, serviceDescription: formData.description });
+        setFormData(prev => {
+            const currentProductIds = new Set((prev.productsUsed || []).map(p => p.productId));
+            const newProductsToAdd = suggestedIds
+                .filter(id => !currentProductIds.has(id))
+                .map(productId => ({ productId, quantity: 1 }));
+            return { ...prev, productsUsed: [...(prev.productsUsed || []), ...newProductsToAdd] };
+        });
+    } catch(e) {
+        console.error(e);
+        alert("AI product suggestion failed.");
+    } finally {
+        setIsSuggestingProducts(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (serviceToEdit) await updateService({ id: serviceToEdit._id, ...formData });
@@ -138,7 +164,12 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
         )}
         
         <div className="pt-4 border-t border-gray-700">
-            <h4 className="text-sm font-medium text-gray-300 mb-2">Products Consumed</h4>
+            <div className="flex justify-between items-center mb-2">
+                <h4 className="text-sm font-medium text-gray-300">Products Consumed</h4>
+                {enableSmartInventory && (
+                    <button type="button" onClick={handleSuggestProducts} disabled={isSuggestingProducts || !formData.name} className="flex items-center space-x-1 text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"><MagicIcon className="w-4 h-4" /><span>{isSuggestingProducts ? 'Suggesting...' : 'AI Suggest Products'}</span></button>
+                )}
+            </div>
             <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
                 {(formData.productsUsed || []).map((p, index) => (
                     <div key={index} className="flex items-center gap-2 p-2 bg-gray-900 rounded-md">

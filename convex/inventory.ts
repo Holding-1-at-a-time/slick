@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
 import { Id } from './_generated/dataModel';
 import { productStockStatusAggregate } from './aggregates';
+import { api, internal } from './_generated/api';
 
 export const getData = query({
     handler: async (ctx) => {
@@ -25,6 +26,7 @@ export const createProduct = mutation({
         supplierId: v.id('suppliers'),
         stockLevel: v.number(),
         reorderPoint: v.number(),
+        unit: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const productId = await ctx.db.insert('products', args);
@@ -44,6 +46,7 @@ export const updateProduct = mutation({
         supplierId: v.id('suppliers'),
         stockLevel: v.number(),
         reorderPoint: v.number(),
+        unit: v.optional(v.string()),
     },
     handler: async (ctx, { id, ...rest }) => {
         const oldDoc = await ctx.db.get(id);
@@ -137,5 +140,129 @@ export const debitInventoryForJob = internalMutation({
             }
         }
         await ctx.db.patch(jobId, { inventoryDebited: true });
+    }
+});
+
+// --- Forecasting & Alerts ---
+
+const FORECASTING_PERIOD_DAYS = 90;
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
+
+export const runForecastingForAllProducts = internalAction({
+    handler: async (ctx) => {
+        const products = await ctx.runQuery(api.inventory.getData);
+        for (const product of products.products) {
+            await ctx.runAction(internal.inventory.calculateForecastForProduct, { productId: product._id });
+        }
+    }
+});
+
+export const calculateForecastForProduct = internalAction({
+    args: { productId: v.id('products') },
+    handler: async (ctx, { productId }) => {
+        const product = await ctx.runQuery(internal.inventory.getProduct, { id: productId });
+        if (!product) return;
+
+        const lookbackDate = Date.now() - FORECASTING_PERIOD_DAYS * MS_IN_DAY;
+        const logs = await ctx.runQuery(internal.inventory.getConsumptionLogsSince, { productId, timestamp: lookbackDate });
+
+        const totalConsumption = logs.reduce((sum, log) => sum + Math.abs(log.change), 0);
+        const dailyConsumptionRate = totalConsumption / FORECASTING_PERIOD_DAYS;
+        
+        const predictedDepletionDate = dailyConsumptionRate > 0 
+            ? Date.now() + (product.stockLevel / dailyConsumptionRate) * MS_IN_DAY
+            : undefined;
+
+        await ctx.runMutation(internal.inventory.saveForecast, {
+            productId,
+            dailyConsumptionRate,
+            predictedDepletionDate,
+        });
+    }
+});
+
+export const getProduct = internalQuery({
+    args: { id: v.id('products') },
+    handler: (ctx, { id }) => ctx.db.get(id),
+});
+
+export const getConsumptionLogsSince = internalQuery({
+    args: { productId: v.id('products'), timestamp: v.number() },
+    handler: async (ctx, { productId, timestamp }) => {
+        return await ctx.db.query('inventoryLog')
+            .withIndex('by_product', q => q.eq('productId', productId))
+            .filter(q => q.and(
+                q.eq(q.field('type'), 'job_deduction'),
+                q.gt(q.field('timestamp'), timestamp)
+            ))
+            .collect();
+    }
+});
+
+export const saveForecast = internalMutation({
+    args: {
+        productId: v.id('products'),
+        dailyConsumptionRate: v.number(),
+        predictedDepletionDate: v.optional(v.number()),
+    },
+    handler: (ctx, args) => ctx.db.patch(args.productId, { ...args }),
+});
+
+export const generateLowStockAlerts = internalAction({
+    handler: async (ctx) => {
+        const lowStockProducts = await ctx.runQuery(internal.inventory.getLowStockProducts);
+        const suppliers = await ctx.runQuery(api.inventory.getData).then(d => d.suppliers);
+        
+        for (const product of lowStockProducts) {
+            const hasUnreadAlert = await ctx.runQuery(internal.inventory.hasUnreadAlertForProduct, { productId: product._id });
+            if (!hasUnreadAlert) {
+                const supplier = suppliers.find(s => s._id === product.supplierId);
+                const message = await ctx.runAction(internal.ai.generateReorderSuggestion, {
+                    productName: product.name,
+                    stockLevel: product.stockLevel,
+                    supplierName: supplier?.name || 'Unknown Supplier',
+                    leadTimeDays: supplier?.estimatedLeadTimeDays,
+                });
+
+                await ctx.runMutation(internal.inventory.createNotification, {
+                    productId: product._id,
+                    title: `Low Stock: ${product.name}`,
+                    message,
+                });
+            }
+        }
+    }
+});
+
+export const getLowStockProducts = internalQuery({
+    handler: async (ctx) => {
+        const products = await ctx.db.query('products').collect();
+        return products.filter(p => p.stockLevel <= p.reorderPoint);
+    }
+});
+
+export const hasUnreadAlertForProduct = internalQuery({
+    args: { productId: v.id('products') },
+    handler: async (ctx, { productId }) => {
+        const alert = await ctx.db.query('notifications')
+            .withIndex('by_read_status', q => q.eq('isRead', false))
+            .filter(q => q.eq(q.field('productId'), productId))
+            .first();
+        return !!alert;
+    }
+});
+
+export const createNotification = internalMutation({
+    args: {
+        productId: v.id('products'),
+        title: v.string(),
+        message: v.string(),
+    },
+    handler: (ctx, args) => {
+        return ctx.db.insert('notifications', {
+            ...args,
+            isRead: false,
+            timestamp: Date.now(),
+        });
     }
 });

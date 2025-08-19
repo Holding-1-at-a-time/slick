@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Service, PricingMatrix, Upcharge, Checklist, Customer, Vehicle, Job, Payment, Appointment, User, Promotion, Product } from '../types';
-import { PlusIcon, EditIcon, TrashIcon, PackageIcon, DealerIcon, SearchIcon, CalculatorIcon, UpchargeIcon, ChecklistIcon, UserGroupIcon, CarIcon, BriefcaseIcon, ArrowRightCircleIcon, ReceiptPercentIcon, CreditCardIcon, CalendarIcon, LinkIcon, ExclamationTriangleIcon } from './icons';
+import { Service, PricingMatrix, Upcharge, Checklist, Customer, Vehicle, Job, Payment, Appointment, User, Promotion, Product, Supplier } from '../types';
+import { PlusIcon, EditIcon, TrashIcon, PackageIcon, DealerIcon, SearchIcon, CalculatorIcon, UpchargeIcon, ChecklistIcon, UserGroupIcon, CarIcon, BriefcaseIcon, ArrowRightCircleIcon, ReceiptPercentIcon, CreditCardIcon, CalendarIcon, LinkIcon, ExclamationTriangleIcon, BuildingStorefrontIcon, CubeIcon } from './icons';
 import ServiceFormModal from './ServiceFormModal';
 import PricingMatrixFormModal from './PricingMatrixFormModal';
 import UpchargeFormModal from './UpchargeFormModal';
@@ -12,6 +12,29 @@ import CustomerFormModal from './CustomerFormModal';
 import JobFormModal from './JobFormModal';
 import PaymentFormModal from './PaymentFormModal';
 import AppointmentFormModal from './AppointmentFormModal';
+import SupplierFormModal from './SupplierFormModal';
+
+type ManagementTab = 'jobs' | 'customers' | 'services' | 'pricing' | 'upcharges' | 'checklists' | 'suppliers';
+
+const TabButton: React.FC<{
+  tab: ManagementTab;
+  activeTab: ManagementTab;
+  setActiveTab: (tab: ManagementTab) => void;
+  children: React.ReactNode;
+  icon: React.ReactNode;
+}> = ({ tab, activeTab, setActiveTab, children, icon }) => (
+    <button
+        onClick={() => setActiveTab(tab)}
+        className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+            activeTab === tab 
+            ? 'bg-blue-600 text-white' 
+            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+        }`}
+    >
+        {icon}
+        <span>{children}</span>
+    </button>
+);
 
 const ServiceCard: React.FC<{ 
     service: Service;
@@ -188,6 +211,24 @@ const JobCard: React.FC<{ job: Job; customer: Customer | undefined; vehicle: Veh
     );
 };
 
+const SupplierCard: React.FC<{ supplier: Supplier; products: Product[]; onEdit: (supplier: Supplier) => void; onDelete: (supplierId: Id<'suppliers'>) => void; }> = ({ supplier, products, onEdit, onDelete }) => (
+    <div className="bg-gray-800 rounded-lg shadow-lg p-5 flex flex-col justify-between">
+        <div>
+            <h3 className="text-lg font-bold text-white">{supplier.name}</h3>
+            <p className="text-sm text-gray-400">{supplier.contactEmail}</p>
+            <div className="mt-4 pt-4 border-t border-gray-700/50">
+                <h4 className="text-xs font-semibold uppercase text-gray-500 mb-2">Products Supplied ({products.length})</h4>
+                <ul className="space-y-1">{products.map(p => (<li key={p._id} className="flex items-center text-sm text-gray-300 bg-gray-700/40 px-2 py-1 rounded-md"><CubeIcon className="w-4 h-4 mr-2 text-gray-400" />{p.name}</li>))}</ul>
+            </div>
+        </div>
+        <div className="flex justify-end space-x-2 border-t border-gray-700 pt-3 mt-4">
+            <button onClick={() => onEdit(supplier)} className="p-2 text-gray-400 hover:text-blue-400 transition-colors rounded-full hover:bg-gray-700"><EditIcon className="w-5 h-5" /></button>
+            <button onClick={() => onDelete(supplier._id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-full hover:bg-gray-700"><TrashIcon className="w-5 h-5" /></button>
+        </div>
+    </div>
+);
+
+
 const ManagementPage: React.FC = () => {
     const data = useQuery(api.management.getPageData);
     const services = data?.services ?? [];
@@ -207,8 +248,11 @@ const ManagementPage: React.FC = () => {
     const deleteChecklist = useMutation(api.checklists.remove);
     const deleteCustomer = useMutation(api.customers.remove);
     const deleteJob = useMutation(api.jobs.remove);
+    const deleteSupplier = useMutation(api.suppliers.remove);
     const convertToWorkOrder = useMutation(api.jobs.convertToWorkOrder);
     const generateInvoice = useMutation(api.jobs.generateInvoice);
+    
+    const [activeTab, setActiveTab] = useState<ManagementTab>('jobs');
 
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
     const [serviceToEdit, setServiceToEdit] = useState<Service | null>(null);
@@ -226,14 +270,12 @@ const ManagementPage: React.FC = () => {
     const [jobForPayment, setJobForPayment] = useState<Job | null>(null);
     const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
     const [jobToScheduleId, setJobToScheduleId] = useState<Id<'jobs'> | null>(null);
+    const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+    const [supplierToEdit, setSupplierToEdit] = useState<Supplier | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [serviceSearchQuery, setServiceSearchQuery] = useState('');
     const searchResults = useQuery(api.services.search, serviceSearchQuery ? { query: serviceSearchQuery } : "skip");
-
-    const handleOpenModal = (setter: React.Dispatch<React.SetStateAction<any>>, value: any) => {
-        setter(value);
-    };
     
     const handleCloseModals = () => {
         setIsServiceModalOpen(false); setServiceToEdit(null);
@@ -244,6 +286,7 @@ const ManagementPage: React.FC = () => {
         setIsJobModalOpen(false); setJobToEdit(null);
         setIsPaymentModalOpen(false); setJobForPayment(null);
         setIsAppointmentModalOpen(false); setJobToScheduleId(null);
+        setIsSupplierModalOpen(false); setSupplierToEdit(null);
     };
 
     const handleShareJobLink = (job: Job) => {
@@ -261,6 +304,11 @@ const ManagementPage: React.FC = () => {
     const handleDeleteChecklist = (id: Id<'checklists'>) => window.confirm('Are you sure?') && deleteChecklist({ id });
     const handleDeleteCustomer = (id: Id<'customers'>) => window.confirm('Are you sure?') && deleteCustomer({ id });
     const handleDeleteJob = (id: Id<'jobs'>) => window.confirm('Are you sure?') && deleteJob({ id });
+    const handleDeleteSupplier = (id: Id<'suppliers'>) => {
+        if (window.confirm('Are you sure?')) {
+            deleteSupplier({ id }).catch(err => alert(err.message));
+        }
+    };
 
     const displayedServices = serviceSearchQuery ? searchResults : services;
     const scheduledJobIds = useMemo(() => new Set(appointments.map(a => a.jobId)), [appointments]);
@@ -270,7 +318,34 @@ const ManagementPage: React.FC = () => {
         return acc;
     }, {} as Record<Id<'customers'>, Vehicle[]>), [vehicles]);
 
+    const productsBySupplier = useMemo(() => products.reduce((acc, p) => {
+        if (!acc[p.supplierId]) acc[p.supplierId] = [];
+        acc[p.supplierId].push(p);
+        return acc;
+    }, {} as Record<Id<'suppliers'>, Product[]>), [products]);
+
     if (!data) return <div className="p-8 text-center">Loading management data...</div>;
+    
+    const renderContent = () => {
+        switch(activeTab) {
+            case 'jobs':
+                return <section id="jobs"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Job Management</h2><button onClick={() => { setJobToEdit(null); setIsJobModalOpen(true); }} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"><BriefcaseIcon className="w-5 h-5 mr-2" />Create New Job</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{jobs.map(job => (<JobCard key={job._id} job={job} customer={customers.find(c => c._id === job.customerId)} vehicle={vehicles.find(v => v._id === job.vehicleId)} isScheduled={scheduledJobIds.has(job._id)} onEdit={(j) => {setJobToEdit(j); setIsJobModalOpen(true);}} onDelete={handleDeleteJob} onConvertToWorkOrder={convertToWorkOrder} onGenerateInvoice={generateInvoice} onRecordPayment={(j) => {setJobForPayment(j); setIsPaymentModalOpen(true);}} onSchedule={(id) => {setJobToScheduleId(id); setIsAppointmentModalOpen(true);}} onShare={handleShareJobLink}/>))}</div></section>;
+            case 'customers':
+                return <section id="customers"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Customer Management</h2><button onClick={() => {setCustomerToEdit(null); setIsCustomerModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><UserGroupIcon className="w-5 h-5 mr-2" />Add Customer</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{customers.map(customer => (<CustomerCard key={customer._id} customer={customer} vehicles={vehiclesByCustomer[customer._id] || []} onEdit={(c) => {setCustomerToEdit(c); setIsCustomerModalOpen(true);}} onDelete={handleDeleteCustomer}/>))}</div></section>;
+            case 'services':
+                 return <section id="services"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Service Management</h2><button onClick={() => {setServiceToEdit(null); setIsServiceModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><PlusIcon className="w-5 h-5 mr-2" />Add Service</button></header><div className="mb-8 p-4 bg-gray-800 rounded-lg relative"><input type="text" placeholder="Search services..." value={serviceSearchQuery} onChange={e => setServiceSearchQuery(e.target.value)} className="w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 pl-10 text-white"/><SearchIcon className="w-5 h-5 text-gray-400 absolute left-7 top-1/2 -translate-y-1/2" /></div><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{(displayedServices || []).map(service => (<ServiceCard key={service._id} service={service} allServices={services} appliedMatrices={pricingMatrices.filter(m => m.appliesToServiceIds.includes(service._id))} hasChecklist={checklists.some(c => c.serviceId === service._id)} onEdit={(s) => {setServiceToEdit(s); setIsServiceModalOpen(true);}} onDelete={handleDeleteService}/>))}</div></section>;
+            case 'pricing':
+                return <section id="pricing"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Pricing Matrices</h2><button onClick={() => {setMatrixToEdit(null); setIsMatrixModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><CalculatorIcon className="w-5 h-5 mr-2" />Add Matrix</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{pricingMatrices.map(matrix => (<PricingMatrixCard key={matrix._id} matrix={matrix} allServices={services} onEdit={(m) => {setMatrixToEdit(m); setIsMatrixModalOpen(true);}} onDelete={handleDeleteMatrix}/>))}</div></section>;
+            case 'upcharges':
+                return <section id="upcharges"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Upcharges</h2><button onClick={() => {setUpchargeToEdit(null); setIsUpchargeModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><UpchargeIcon className="w-5 h-5 mr-2" />Add Upcharge</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{upcharges.map(upcharge => (<UpchargeCard key={upcharge._id} upcharge={upcharge} onEdit={(u) => {setUpchargeToEdit(u); setIsUpchargeModalOpen(true);}} onDelete={handleDeleteUpcharge}/>))}</div></section>;
+            case 'checklists':
+                return <section id="checklists"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Checklists</h2><button onClick={() => {setChecklistToEdit(null); setIsChecklistModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><ChecklistIcon className="w-5 h-5 mr-2" />Add Checklist</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{checklists.map(checklist => (<ChecklistCard key={checklist._id} checklist={checklist} allServices={services} onEdit={(c) => {setChecklistToEdit(c); setIsChecklistModalOpen(true);}} onDelete={handleDeleteChecklist}/>))}</div></section>;
+            case 'suppliers':
+                return <section id="suppliers"><header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Supplier Management</h2><button onClick={() => {setSupplierToEdit(null); setIsSupplierModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><BuildingStorefrontIcon className="w-5 h-5 mr-2" />Add Supplier</button></header><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{suppliers.map(supplier => (<SupplierCard key={supplier._id} supplier={supplier} products={productsBySupplier[supplier._id] || []} onEdit={(s) => {setSupplierToEdit(s); setIsSupplierModalOpen(true);}} onDelete={handleDeleteSupplier}/>))}</div></section>;
+            default:
+                return null;
+        }
+    }
 
     return (
     <div className="container mx-auto p-4 md:p-8">
@@ -278,49 +353,19 @@ const ManagementPage: React.FC = () => {
         <div><h1 className="text-3xl font-bold text-white">Management</h1><p className="text-gray-400 mt-1">Manage all aspects of your auto detailing business.</p></div>
       </header>
 
-      {/* Sections: Jobs, Customers, Services, Pricing, Upcharges, Checklists */}
-      <section id="jobs" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Job Management</h2><button onClick={() => { setJobToEdit(null); setIsJobModalOpen(true); }} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"><BriefcaseIcon className="w-5 h-5 mr-2" />Create New Job</button></header>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {jobs.map(job => (<JobCard key={job._id} job={job} customer={customers.find(c => c._id === job.customerId)} vehicle={vehicles.find(v => v._id === job.vehicleId)} isScheduled={scheduledJobIds.has(job._id)} onEdit={(j) => {setJobToEdit(j); setIsJobModalOpen(true);}} onDelete={handleDeleteJob} onConvertToWorkOrder={convertToWorkOrder} onGenerateInvoice={generateInvoice} onRecordPayment={(j) => {setJobForPayment(j); setIsPaymentModalOpen(true);}} onSchedule={(id) => {setJobToScheduleId(id); setIsAppointmentModalOpen(true);}} onShare={handleShareJobLink}/>))}
-        </div>
-      </section>
+       <div className="bg-gray-800 rounded-lg p-2 mb-8">
+            <div className="flex flex-wrap items-center gap-2">
+                <TabButton tab="jobs" activeTab={activeTab} setActiveTab={setActiveTab} icon={<BriefcaseIcon className="w-5 h-5" />}>Jobs</TabButton>
+                <TabButton tab="customers" activeTab={activeTab} setActiveTab={setActiveTab} icon={<UserGroupIcon className="w-5 h-5" />}>Customers</TabButton>
+                <TabButton tab="services" activeTab={activeTab} setActiveTab={setActiveTab} icon={<PackageIcon className="w-5 h-5" />}>Services</TabButton>
+                <TabButton tab="pricing" activeTab={activeTab} setActiveTab={setActiveTab} icon={<CalculatorIcon className="w-5 h-5" />}>Pricing</TabButton>
+                <TabButton tab="upcharges" activeTab={activeTab} setActiveTab={setActiveTab} icon={<UpchargeIcon className="w-5 h-5" />}>Upcharges</TabButton>
+                <TabButton tab="checklists" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ChecklistIcon className="w-5 h-5" />}>Checklists</TabButton>
+                <TabButton tab="suppliers" activeTab={activeTab} setActiveTab={setActiveTab} icon={<BuildingStorefrontIcon className="w-5 h-5" />}>Suppliers</TabButton>
+            </div>
+       </div>
 
-       <section id="customers" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Customer Management</h2><button onClick={() => {setCustomerToEdit(null); setIsCustomerModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><UserGroupIcon className="w-5 h-5 mr-2" />Add Customer</button></header>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {customers.map(customer => (<CustomerCard key={customer._id} customer={customer} vehicles={vehiclesByCustomer[customer._id] || []} onEdit={(c) => {setCustomerToEdit(c); setIsCustomerModalOpen(true);}} onDelete={handleDeleteCustomer}/>))}
-        </div>
-      </section>
-
-      <section id="services" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Service Management</h2><button onClick={() => {setServiceToEdit(null); setIsServiceModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><PlusIcon className="w-5 h-5 mr-2" />Add Service</button></header>
-        <div className="mb-8 p-4 bg-gray-800 rounded-lg relative"><input type="text" placeholder="Search services..." value={serviceSearchQuery} onChange={e => setServiceSearchQuery(e.target.value)} className="w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 pl-10 text-white"/><SearchIcon className="w-5 h-5 text-gray-400 absolute left-7 top-1/2 -translate-y-1/2" /></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(displayedServices || []).map(service => (<ServiceCard key={service._id} service={service} allServices={services} appliedMatrices={pricingMatrices.filter(m => m.appliesToServiceIds.includes(service._id))} hasChecklist={checklists.some(c => c.serviceId === service._id)} onEdit={(s) => {setServiceToEdit(s); setIsServiceModalOpen(true);}} onDelete={handleDeleteService}/>))}
-        </div>
-      </section>
-
-      <section id="pricing" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Pricing Matrices</h2><button onClick={() => {setMatrixToEdit(null); setIsMatrixModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><CalculatorIcon className="w-5 h-5 mr-2" />Add Matrix</button></header>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pricingMatrices.map(matrix => (<PricingMatrixCard key={matrix._id} matrix={matrix} allServices={services} onEdit={(m) => {setMatrixToEdit(m); setIsMatrixModalOpen(true);}} onDelete={handleDeleteMatrix}/>))}
-        </div>
-      </section>
-
-      <section id="upcharges" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Upcharges</h2><button onClick={() => {setUpchargeToEdit(null); setIsUpchargeModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><UpchargeIcon className="w-5 h-5 mr-2" />Add Upcharge</button></header>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {upcharges.map(upcharge => (<UpchargeCard key={upcharge._id} upcharge={upcharge} onEdit={(u) => {setUpchargeToEdit(u); setIsUpchargeModalOpen(true);}} onDelete={handleDeleteUpcharge}/>))}
-        </div>
-      </section>
-
-       <section id="checklists" className="mb-16">
-        <header className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Checklists</h2><button onClick={() => {setChecklistToEdit(null); setIsChecklistModalOpen(true);}} className="flex items-center bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"><ChecklistIcon className="w-5 h-5 mr-2" />Add Checklist</button></header>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {checklists.map(checklist => (<ChecklistCard key={checklist._id} checklist={checklist} allServices={services} onEdit={(c) => {setChecklistToEdit(c); setIsChecklistModalOpen(true);}} onDelete={handleDeleteChecklist}/>))}
-        </div>
-      </section>
+      {renderContent()}
       
       {/* Modals */}
       <ServiceFormModal isOpen={isServiceModalOpen} onClose={handleCloseModals} serviceToEdit={serviceToEdit} products={products} />
@@ -331,6 +376,7 @@ const ManagementPage: React.FC = () => {
       <JobFormModal isOpen={isJobModalOpen} onClose={handleCloseModals} jobToEdit={jobToEdit} />
       <PaymentFormModal isOpen={isPaymentModalOpen} onClose={handleCloseModals} job={jobForPayment} />
       <AppointmentFormModal isOpen={isAppointmentModalOpen} onClose={handleCloseModals} appointmentToEdit={null} jobToScheduleId={jobToScheduleId} />
+      <SupplierFormModal isOpen={isSupplierModalOpen} onClose={handleCloseModals} supplierToEdit={supplierToEdit} />
     </div>
   );
 };
