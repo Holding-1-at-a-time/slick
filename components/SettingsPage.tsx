@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { User, Company, Page } from '../types';
-import { PlusIcon, EditIcon, TrashIcon, UserCircleIcon, OfficeBuildingIcon, StripeIcon, LinkIcon } from './icons';
+import { PlusIcon, EditIcon, TrashIcon, UserCircleIcon, OfficeBuildingIcon, StripeIcon, LinkIcon, EnvelopeIcon } from './icons';
 import UserFormModal from './UserFormModal';
 
 interface SettingsPageProps {
@@ -103,6 +103,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
                 name: companyData.name,
                 defaultLaborRate: companyData.defaultLaborRate,
                 enableSmartInventory: !!companyData.enableSmartInventory,
+                enableEmailReminders: !!companyData.enableEmailReminders,
                 businessHours: companyData.businessHours,
                 bookingLeadTimeDays: companyData.bookingLeadTimeDays,
                 slotDurationMinutes: companyData.slotDurationMinutes,
@@ -152,6 +153,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
                       </div>
                   </section>
                 )}
+
+                <section id="communications" className="mb-12">
+                     <div className="bg-gray-800 rounded-lg shadow-lg p-6">
+                         <h2 className="text-xl font-bold text-white flex items-center mb-6"><EnvelopeIcon className="w-6 h-6 mr-3 text-gray-400"/>Communications</h2>
+                         <div className="pt-4">
+                              <label className="flex items-center cursor-pointer">
+                                  <input type="checkbox" name="enableEmailReminders" checked={!!companyData?.enableEmailReminders} onChange={handleCompanyChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
+                                  <span className="ml-3 text-sm font-medium text-gray-300">Enable Automated 24-Hour Email Reminders</span>
+                              </label>
+                              <p className="text-xs text-gray-500 ml-7">Automatically send a reminder email to customers 24 hours before their scheduled appointment to reduce no-shows.</p>
+                          </div>
+                     </div>
+                </section>
 
                 <section id="online-booking" className="mb-12">
                     <div className="bg-gray-800 rounded-lg shadow-lg p-6">

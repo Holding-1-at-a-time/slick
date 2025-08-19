@@ -16,7 +16,9 @@ export type JobPhoto = Doc<"jobs">["photos"][number];
 export type Job = Doc<"jobs"> & {
     inventoryDebited?: boolean;
 };
-export type Appointment = Doc<"appointments">;
+export type Appointment = Doc<"appointments"> & {
+    reminderSentAt?: number;
+};
 export type User = Doc<"users">;
 export type Company = Doc<"company"> & {
     enableSmartInventory?: boolean;
@@ -25,6 +27,7 @@ export type Company = Doc<"company"> & {
     };
     bookingLeadTimeDays?: number;
     slotDurationMinutes?: number;
+    enableEmailReminders?: boolean;
 };
 export type Supplier = Doc<"suppliers"> & {
     estimatedLeadTimeDays?: number;
@@ -40,5 +43,6 @@ export type Campaign = Doc<"campaigns">;
 export type InventoryLog = Doc<"inventoryLog">;
 export type Notification = Doc<"notifications">;
 export type LearnedProductServiceMapping = Doc<"learnedProductServiceMapping">;
+export type CommunicationLog = Doc<"communicationLogs">;
 
 export type Page = 'dashboard' | 'management' | 'schedule' | 'settings' | 'reports' | 'inventory' | 'marketing' | 'stripe-onboarding' | 'knowledge-base' | 'assistant';

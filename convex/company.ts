@@ -17,6 +17,7 @@ export const save = mutation({
         businessHours: v.optional(v.any()),
         bookingLeadTimeDays: v.optional(v.number()),
         slotDurationMinutes: v.optional(v.number()),
+        enableEmailReminders: v.optional(v.boolean()),
     },
     handler: async (ctx, { id, ...rest }) => {
         await ctx.db.patch(id, rest);

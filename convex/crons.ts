@@ -1,3 +1,4 @@
+
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api.js";
 
@@ -22,6 +23,13 @@ crons.daily(
   "generateLowStockAlerts",
   { hourUTC: 3, minuteUTC: 0 }, // Run at 3:00 AM UTC
   internal.inventory.generateLowStockAlerts,
+);
+
+// Schedule hourly appointment reminder checks.
+crons.hourly(
+  "sendAppointmentReminders",
+  { minuteUTC: 0 }, // Run at the top of every hour
+  internal.communication.sendReminders,
 );
 
 export default crons;

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { customerCount, jobStats, productStockStatusAggregate } from "./aggregates";
+import { Doc } from "./_generated/dataModel";
 
 export const getCurrent = query({
   args: {},
@@ -126,10 +127,16 @@ export const getDashboardData = query({
             upper: { key: ['completed', Date.now()], inclusive: true },
         }
     });
+
+    const jobDocs = (
+      await Promise.all(
+        completedJobsLastMonth.page.map((item) => ctx.db.get(item.id))
+      )
+    ).filter((doc): doc is Doc<"jobs"> => doc !== null);
     
     const allServices = await ctx.db.query("services").collect();
     const revenueByService: Record<string, number> = {};
-    for (const job of completedJobsLastMonth.page) {
+    for (const job of jobDocs) {
       for (const item of job.jobItems) {
         const service = allServices.find((s) => s._id === item.serviceId);
         if (service) {

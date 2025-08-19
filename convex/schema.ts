@@ -27,6 +27,7 @@ export default defineSchema({
     })),
     bookingLeadTimeDays: v.optional(v.number()),
     slotDurationMinutes: v.optional(v.number()),
+    enableEmailReminders: v.optional(v.boolean()),
   }),
 
   services: defineTable({
@@ -139,6 +140,7 @@ export default defineSchema({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     status: v.union(v.union(v.literal('scheduled'), v.literal('inProgress'), v.literal('completed'), v.literal('cancelled'))),
+    reminderSentAt: v.optional(v.number()),
   }).index('by_job', ['jobId']),
 
   suppliers: defineTable({
@@ -210,4 +212,12 @@ export default defineSchema({
     toolCallId: v.optional(v.string()),
     toolCalls: v.optional(v.any()),
   }).index("by_threadId", ["threadId"]),
+  
+  communicationLogs: defineTable({
+    jobId: v.id('jobs'),
+    type: v.union(v.literal('automated_reminder'), v.literal('manual_message')),
+    method: v.literal('email'),
+    content: v.string(),
+    timestamp: v.number(),
+  }).index('by_job', ['jobId']),
 });

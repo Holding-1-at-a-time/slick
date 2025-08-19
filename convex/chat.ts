@@ -54,7 +54,7 @@ export const sendMessage = action({
             content: message,
         });
 
-        await agent.run(ctx, { threadId: newThreadId, maxSteps: 5 });
+        await agent(ctx, { threadId: newThreadId, maxSteps: 5 });
 
         return newThreadId;
     },

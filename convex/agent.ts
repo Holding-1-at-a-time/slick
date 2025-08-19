@@ -90,6 +90,7 @@ const scheduleJob = createTool({
 // --- Agent Definition ---
 
 export const agent = new Agent(components.agent, {
+  name: "assistant",
   languageModel: openai.chat("gpt-4o-mini"),
   instructions: "You are an expert assistant for an auto detailing business. You are helpful, friendly, and efficient. When a user asks to schedule a job, you MUST use the `scheduleJob` tool. Do not try to schedule it manually. If information is missing, ask for it. When asked about schedules, use the `getAppointments` tool.",
   tools: {

@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const PlusIcon = ({ className }: { className?: string }) => (
@@ -283,5 +284,17 @@ export const BellIcon = ({ className }: { className?: string }) => (
 export const LightBulbIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 14.25h3m-6.75 3h10.5M12 3c-4.97 0-9 4.03-9 9 0 3.31 1.8 6.17 4.5 7.75l.75 2.25h7.5l.75-2.25c2.7-1.58 4.5-4.44 4.5-7.75 0-4.97-4.03-9-9-9z" />
+    </svg>
+);
+
+export const EnvelopeIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+    </svg>
+);
+
+export const ChatBubbleLeftRightIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193l-3.72.16c-.864.047-1.52.82-1.52 1.693v.328c0 .87-.655 1.598-1.5 1.76l-3 .502a1.5 1.5 0 01-1.5-1.5v-.653c0-.87-.655-1.598-1.5-1.76l-3-.502a1.5 1.5 0 01-1.5-1.5v-4.286c0-1.136.847-2.1 1.98-2.193l3.72-.16c.864-.047 1.52-.82 1.52-1.693v-.328c0-.87.655-1.598 1.5-1.76l3 .502a1.5 1.5 0 011.5 1.5v.653c0 .87.655 1.598 1.5 1.76l3 .502z" />
     </svg>
 );
