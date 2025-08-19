@@ -20,7 +20,7 @@ export const internalGenerateServiceDescription = internalAction({
   args: { serviceName: v.string() },
   handler: async (ctx, { serviceName }): Promise<string> => {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: "gemini-2.5-flash",
       contents: `Generate a compelling, customer-facing description for an auto detailing service named "${serviceName}". Keep it concise (2-3 sentences) and highlight the key benefits.`,
     });
     return response.text;
@@ -106,27 +106,23 @@ export const suggestQuoteFromPhotos = internalAction({
 });
 
 export const suggestAppointmentSlots = action({
-  args: { jobId: v.id('jobs') },
-  handler: async (ctx, { jobId }) => {
-    const job = await ctx.runQuery(api.jobs.get, { id: jobId });
-    const allAppointments = await ctx.runQuery(api.appointments.getAll);
-    const allServices = await ctx.runQuery(api.services.getAll);
-    if (!job || !allAppointments || !allServices) {
-      return null;
-    }
+    args: { jobId: v.id('jobs') },
+    handler: async (ctx, { jobId }) => {
+        const job = await ctx.runQuery(api.jobs.get, { id: jobId });
+        const allAppointments = await ctx.runQuery(api.appointments.getAll);
+        const allServices = await ctx.runQuery(api.services.getAll);
+        if (!job || !allAppointments || !allServices) return null;
 
-    const jobDurationHours = job.jobItems.reduce((total, item) => {
-      const service = allServices.find((s) => s._id === item.serviceId);
-      return total + (service?.estimatedDurationHours || 2);
-    }, 0);
+        const jobDurationHours = job.jobItems.reduce((total, item) => {
+            const service = allServices.find(s => s._id === item.serviceId);
+            return total + (service?.estimatedDurationHours || 2);
+        }, 0);
 
-    const prompt = `I need to schedule a new detailing job that will take approximately ${jobDurationHours} hours.
+        const prompt = `I need to schedule a new detailing job that will take approximately ${jobDurationHours} hours.
         My typical business hours are Monday-Friday 9am to 5pm.
         
         Here is a list of my currently scheduled appointments in UTC timestamps:
-        ${JSON.stringify(
-      allAppointments.map((a) => ({ start: a.startTime, end: a.endTime }))
-    )}
+        ${JSON.stringify(allAppointments.map(a => ({ start: a.startTime, end: a.endTime})))}
 
         Based on this, suggest three optimal, non-overlapping appointment slots for the new job in the near future (within the next two weeks). Provide the start and end times for each slot.
         
@@ -134,11 +130,11 @@ export const suggestAppointmentSlots = action({
         Example: [{"startTime": "2024-08-15T13:00:00.000Z", "endTime": "2024-08-15T17:00:00.000Z"}]
         `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    });
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
 
         return JSON.parse(response.text);
     }

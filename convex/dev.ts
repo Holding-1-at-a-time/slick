@@ -3,11 +3,13 @@ import { mutation } from './_generated/server';
 export const seedDatabase = mutation({
     handler: async (ctx) => {
         // Clear existing data
-        const tables: string[] = ["users", "company", "services", "pricingMatrices", "upcharges", 
-        "checklists", "customers", "vehicles", "jobs", "appointments", 
-        "suppliers", "products", "promotions", "campaigns"];
+        const tables: (keyof typeof ctx.db._tables)[] = [
+            "users", "company", "services", "pricingMatrices", "upcharges", 
+            "checklists", "customers", "vehicles", "jobs", "appointments", 
+            "suppliers", "products", "promotions", "campaigns"
+        ];
         for (const table of tables) {
-            const docs = await ctx.db.query(table as any).collect();
+            const docs = await ctx.db.query(table).collect();
             await Promise.all(docs.map(doc => ctx.db.delete(doc._id)));
         }
 
@@ -28,7 +30,6 @@ export const seedDatabase = mutation({
                 name: identity.name!,
                 email: identity.email!,
                 role: "admin",
-                _creationTime: Date.now(), // Add this line
             };
         }
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -48,14 +47,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
 
     const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!companyData) return;
-        const { name, value } = e.target;
-        setCompanyData(prev => ({ ...prev!, [name]: name === 'defaultLaborRate' ? parseFloat(value) || 0 : value }));
+        const { name, value, type, checked } = e.target;
+        if (type === 'checkbox') {
+            setCompanyData(prev => ({...prev!, [name]: checked }));
+        } else {
+            setCompanyData(prev => ({ ...prev!, [name]: name === 'defaultLaborRate' ? parseFloat(value) || 0 : value }));
+        }
     };
 
     const handleCompanySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (companyData) {
-            await saveCompany({ id: companyData._id, name: companyData.name, defaultLaborRate: companyData.defaultLaborRate });
+            await saveCompany({ id: companyData._id, name: companyData.name, defaultLaborRate: companyData.defaultLaborRate, enableAutomaticInventory: !!companyData.enableAutomaticInventory });
             alert('Company profile saved!');
         }
     };
@@ -87,6 +90,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ setActivePage }) => {
                               <div><label htmlFor="name" className="block text-sm font-medium text-gray-300">Company Name</label><input type="text" name="name" id="name" value={companyData.name} onChange={handleCompanyChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/></div>
                               <div><label htmlFor="defaultLaborRate" className="block text-sm font-medium text-gray-300">Default Labor Rate ($/hr)</label><input type="number" name="defaultLaborRate" id="defaultLaborRate" value={companyData.defaultLaborRate} onChange={handleCompanyChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/></div>
                           </div>
+                           <div className="pt-4 border-t border-gray-700">
+                                <label className="flex items-center cursor-pointer">
+                                    <input type="checkbox" name="enableAutomaticInventory" checked={!!companyData.enableAutomaticInventory} onChange={handleCompanyChange} className="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500" />
+                                    <span className="ml-3 text-sm font-medium text-gray-300">Enable Automatic Inventory Deduction</span>
+                                </label>
+                                <p className="text-xs text-gray-500 ml-7">When enabled, inventory will be automatically debited when a job is marked as "Completed".</p>
+                            </div>
                           <div className="flex justify-end pt-2"><button type="submit" className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Save Company Profile</button></div>
                       </form>
                   </div>

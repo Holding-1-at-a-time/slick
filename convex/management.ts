@@ -13,7 +13,9 @@ export const getPageData = query({
         const vehicles = await ctx.db.query("vehicles").collect();
         const jobs = await ctx.db.query("jobs").order("desc").collect();
         const appointments = await ctx.db.query("appointments").collect();
+        const products = await ctx.db.query("products").collect();
+        const suppliers = await ctx.db.query("suppliers").collect();
 
-        return { services, pricingMatrices, upcharges, checklists, customers, vehicles, jobs, appointments };
+        return { services, pricingMatrices, upcharges, checklists, customers, vehicles, jobs, appointments, products, suppliers };
     }
 });

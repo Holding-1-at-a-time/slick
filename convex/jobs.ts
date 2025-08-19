@@ -3,7 +3,8 @@ import { internalMutation, mutation, query } from './_generated/server';
 import { Id } from './_generated/dataModel';
 import { customAlphabet } from 'nanoid';
 import { retrier } from './retrier';
-import { internal } from './_generated/api';
+import { api, internal } from './_generated/api';
+import { jobStats, servicePerformanceAggregate, technicianPerformanceAggregate } from './aggregates';
 
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
@@ -24,7 +25,8 @@ export const getDataForForm = query({
         const pricingMatrices = await ctx.db.query("pricingMatrices").collect();
         const upcharges = await ctx.db.query("upcharges").collect();
         const promotions = await ctx.db.query("promotions").collect();
-        return { customers, vehicles, services, pricingMatrices, upcharges, promotions };
+        const products = await ctx.db.query("products").collect();
+        return { customers, vehicles, services, pricingMatrices, upcharges, promotions, products };
     }
 });
 
@@ -111,6 +113,11 @@ export const save = mutation({
         })),
     },
     handler: async (ctx, { id, ...data }) => {
+        let jobId: Id<"jobs">;
+        const oldDoc = id ? await ctx.db.get(id) : null;
+
+        const statusChangedToCompleted = oldDoc?.status !== 'completed' && data.status === 'completed';
+
         if (id) {
             const existingJob = await ctx.db.get(id);
             const updatedJobItems = data.jobItems.map(newItem => {
@@ -120,10 +127,14 @@ export const save = mutation({
                     checklistCompletedItems: existingItem?.checklistCompletedItems,
                 };
             });
-            await ctx.db.patch(id, {...data, jobItems: updatedJobItems});
-            return id;
+            await ctx.db.patch(id, {
+                ...data, 
+                jobItems: updatedJobItems,
+                completionDate: statusChangedToCompleted ? Date.now() : oldDoc?.completionDate
+            });
+            jobId = id;
         } else {
-            return await ctx.db.insert('jobs', {
+            jobId = await ctx.db.insert('jobs', {
                 ...data,
                 workOrderDate: data.status === 'workOrder' ? Date.now() : undefined,
                 invoiceDate: data.status === 'invoice' ? Date.now() : undefined,
@@ -132,8 +143,27 @@ export const save = mutation({
                 paymentStatus: 'unpaid',
                 customerApprovalStatus: 'pending',
                 publicLinkKey: nanoid(),
+                inventoryDebited: false,
             });
         }
+        
+        const newDoc = await ctx.db.get(jobId);
+
+        if (oldDoc && newDoc) {
+            await jobStats.replace(ctx, oldDoc, newDoc);
+        } else if (newDoc) {
+            await jobStats.insert(ctx, newDoc);
+        }
+
+        await ctx.runMutation(internal.jobs.updateReportingAggregates, { oldJob: oldDoc, newJob: newDoc });
+        
+        if (newDoc?.status === 'completed' && !newDoc.inventoryDebited) {
+            const company = await ctx.db.query('company').first();
+            if (company?.enableAutomaticInventory) {
+                await ctx.scheduler.runAfter(0, internal.inventory.debitInventoryForJob, { jobId });
+            }
+        }
+        return jobId;
     }
 });
 
@@ -143,7 +173,7 @@ export const createDraft = mutation({
         vehicleId: v.id('vehicles'),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert('jobs', {
+        const jobId = await ctx.db.insert('jobs', {
             ...args,
             status: 'estimate',
             estimateDate: Date.now(),
@@ -154,6 +184,11 @@ export const createDraft = mutation({
             customerApprovalStatus: 'pending',
             publicLinkKey: nanoid(),
         });
+        const newDoc = await ctx.db.get(jobId);
+        if (newDoc) {
+            await jobStats.insert(ctx, newDoc);
+        }
+        return jobId;
     }
 });
 
@@ -181,6 +216,9 @@ export const updateVisualQuoteSuccess = internalMutation({
         suggestedUpchargeIds: v.array(v.id('upcharges')),
     },
     handler: async (ctx, { jobId, suggestedServiceIds, suggestedUpchargeIds }) => {
+        const oldDoc = await ctx.db.get(jobId);
+        if (!oldDoc) return;
+
         const services = await ctx.db.query('services').collect();
         const upcharges = await ctx.db.query('upcharges').collect();
 
@@ -220,6 +258,11 @@ export const updateVisualQuoteSuccess = internalMutation({
             visualQuoteStatus: 'complete',
             totalAmount,
         });
+
+        const newDoc = await ctx.db.get(jobId);
+        if (newDoc) {
+            await jobStats.replace(ctx, oldDoc, newDoc);
+        }
     }
 });
 
@@ -233,17 +276,42 @@ export const updateVisualQuoteFailure = internalMutation({
 
 export const remove = mutation({
     args: { id: v.id('jobs') },
-    handler: async (ctx, { id }) => await ctx.db.delete(id),
+    handler: async (ctx, { id }) => {
+        const oldDoc = await ctx.db.get(id);
+        if (!oldDoc) return;
+
+        await ctx.db.delete(id);
+        await jobStats.delete(ctx, oldDoc);
+        await ctx.runMutation(internal.jobs.updateReportingAggregates, { oldJob: oldDoc, newJob: null });
+    },
 });
 
 export const convertToWorkOrder = mutation({
     args: { id: v.id('jobs') },
-    handler: async (ctx, { id }) => await ctx.db.patch(id, { status: 'workOrder', workOrderDate: Date.now() }),
+    handler: async (ctx, { id }) => {
+        const oldDoc = await ctx.db.get(id);
+        if (!oldDoc) return;
+        await ctx.db.patch(id, { status: 'workOrder', workOrderDate: Date.now() });
+        const newDoc = await ctx.db.get(id);
+        if (newDoc) {
+            await jobStats.replace(ctx, oldDoc, newDoc);
+            await ctx.runMutation(internal.jobs.updateReportingAggregates, { oldJob: oldDoc, newJob: newDoc });
+        }
+    },
 });
 
 export const generateInvoice = mutation({
     args: { id: v.id('jobs') },
-    handler: async (ctx, { id }) => await ctx.db.patch(id, { status: 'invoice', invoiceDate: Date.now() }),
+    handler: async (ctx, { id }) => {
+        const oldDoc = await ctx.db.get(id);
+        if (!oldDoc) return;
+        await ctx.db.patch(id, { status: 'invoice', invoiceDate: Date.now() });
+        const newDoc = await ctx.db.get(id);
+        if (newDoc) {
+            await jobStats.replace(ctx, oldDoc, newDoc);
+            await ctx.runMutation(internal.jobs.updateReportingAggregates, { oldJob: oldDoc, newJob: newDoc });
+        }
+    },
 });
 
 export const savePayment = mutation({
@@ -252,25 +320,86 @@ export const savePayment = mutation({
         payment: v.object({ amount: v.number(), paymentDate: v.number(), method: v.string(), notes: v.optional(v.string()) })
     },
     handler: async (ctx, { jobId, payment }) => {
-        const job = await ctx.db.get(jobId);
-        if (!job) throw new Error("Job not found");
+        const oldDoc = await ctx.db.get(jobId);
+        if (!oldDoc) throw new Error("Job not found");
         
-        const newPayment = { 
-          ...payment, 
-          method: payment.method as "Cash" | "Credit Card" | "Check" | "Bank Transfer" | "Other",
-          id: `pay_${Date.now()}`
-        };
-        const payments = [...(job.payments || []), newPayment];
+        const newPayment = { ...payment, id: `pay_${Date.now()}`};
+        const payments = [...(oldDoc.payments || []), newPayment];
         const paymentReceived = payments.reduce((sum, p) => sum + p.amount, 0);
         
         let paymentStatus: 'unpaid' | 'partial' | 'paid' = 'partial';
-        if (paymentReceived >= job.totalAmount) paymentStatus = 'paid';
+        if (paymentReceived >= oldDoc.totalAmount) paymentStatus = 'paid';
         if (paymentReceived <= 0) paymentStatus = 'unpaid';
 
-        const status = paymentStatus === 'paid' ? 'completed' : job.status;
-        const completionDate = paymentStatus === 'paid' ? Date.now() : job.completionDate;
+        let status = oldDoc.status;
+        let completionDate = oldDoc.completionDate;
+        if (paymentStatus === 'paid' && status !== 'completed') {
+            status = 'completed';
+            completionDate = Date.now();
+        }
 
         await ctx.db.patch(jobId, { payments, paymentReceived, paymentStatus, status, completionDate });
+
+        const newDoc = await ctx.db.get(jobId);
+        if (newDoc) {
+            await jobStats.replace(ctx, oldDoc, newDoc);
+            await ctx.runMutation(internal.jobs.updateReportingAggregates, { oldJob: oldDoc, newJob: newDoc });
+        }
+        
+        if (newDoc?.status === 'completed' && !newDoc.inventoryDebited) {
+            const company = await ctx.db.query('company').first();
+            if (company?.enableAutomaticInventory) {
+                await ctx.scheduler.runAfter(0, internal.inventory.debitInventoryForJob, { jobId });
+            }
+        }
+    }
+});
+
+export const updateReportingAggregates = internalMutation({
+    args: { oldJob: v.union(v.null(), v.any()), newJob: v.union(v.null(), v.any()) },
+    handler: async (ctx, { oldJob, newJob }) => {
+        const wasCompleted = oldJob?.status === 'completed' && oldJob.completionDate;
+        const isCompleted = newJob?.status === 'completed' && newJob.completionDate;
+
+        // Job was completed, and is no longer (or is being deleted)
+        if (wasCompleted && !isCompleted) {
+            for (const item of oldJob.jobItems) {
+                await servicePerformanceAggregate.delete(ctx, { key: [item.serviceId, oldJob.completionDate], id: `${oldJob._id}-${item.id}` });
+            }
+            for (const techId of oldJob.assignedTechnicianIds ?? []) {
+                await technicianPerformanceAggregate.delete(ctx, { key: [techId, oldJob.completionDate], id: `${oldJob._id}-${techId}` });
+            }
+        }
+
+        // Job is now completed (or was and its data changed)
+        if (isCompleted) {
+            // If it was already completed (i.e. an update), remove old entries first
+            if (wasCompleted) {
+                 for (const item of oldJob.jobItems) {
+                    await servicePerformanceAggregate.delete(ctx, { key: [item.serviceId, oldJob.completionDate], id: `${oldJob._id}-${item.id}` });
+                }
+                for (const techId of oldJob.assignedTechnicianIds ?? []) {
+                    await technicianPerformanceAggregate.delete(ctx, { key: [techId, oldJob.completionDate], id: `${oldJob._id}-${techId}` });
+                }
+            }
+
+            // Add new entries for the completed job
+            for (const item of newJob.jobItems) {
+                await servicePerformanceAggregate.insert(ctx, {
+                    key: [item.serviceId, newJob.completionDate],
+                    id: `${newJob._id}-${item.id}`,
+                    sumValue: item.total,
+                });
+            }
+            const techCount = newJob.assignedTechnicianIds?.length || 1;
+            for (const techId of newJob.assignedTechnicianIds ?? []) {
+                await technicianPerformanceAggregate.insert(ctx, {
+                    key: [techId, newJob.completionDate],
+                    id: `${newJob._id}-${techId}`,
+                    sumValue: newJob.totalAmount / techCount,
+                });
+            }
+        }
     }
 });
 

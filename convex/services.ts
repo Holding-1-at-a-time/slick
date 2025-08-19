@@ -16,6 +16,10 @@ export const create = mutation({
         serviceIds: v.array(v.id('services')),
         isDealerPackage: v.boolean(),
         estimatedDurationHours: v.optional(v.number()),
+        productsUsed: v.optional(v.array(v.object({
+            productId: v.id('products'),
+            quantity: v.number(),
+        }))),
     },
     handler: async (ctx, args) => {
         return await ctx.db.insert('services', args);
@@ -32,6 +36,10 @@ export const update = mutation({
         serviceIds: v.array(v.id('services')),
         isDealerPackage: v.boolean(),
         estimatedDurationHours: v.optional(v.number()),
+        productsUsed: v.optional(v.array(v.object({
+            productId: v.id('products'),
+            quantity: v.number(),
+        }))),
     },
     handler: async (ctx, { id, ...rest }) => {
         return await ctx.db.patch(id, rest);

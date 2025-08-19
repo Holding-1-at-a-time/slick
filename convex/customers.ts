@@ -1,7 +1,6 @@
 import { v } from 'convex/values';
 import { mutation } from './_generated/server';
-import { Id } from './_generated/dataModel';
-import { query } from './_generated/server';
+import { customerCount } from './aggregates';
 
 export const saveCustomerWithVehicles = mutation({
     args: {
@@ -22,7 +21,7 @@ export const saveCustomerWithVehicles = mutation({
         })),
     },
     handler: async (ctx, { customerId, customerData, vehiclesData }) => {
-        let finalCustomerId: Id<"customers">;
+        let finalCustomerId: string;
 
         if (customerId) {
             // Update existing customer
@@ -31,6 +30,10 @@ export const saveCustomerWithVehicles = mutation({
         } else {
             // Create new customer
             finalCustomerId = await ctx.db.insert('customers', customerData);
+            const newCustomerDoc = await ctx.db.get(finalCustomerId);
+            if (newCustomerDoc) {
+                await customerCount.insert(ctx, newCustomerDoc);
+            }
         }
 
         // We can't do a clean "upsert" by VIN easily, so we'll delete existing and re-insert.
@@ -43,7 +46,7 @@ export const saveCustomerWithVehicles = mutation({
         for (const vehicle of vehiclesData) {
             await ctx.db.insert('vehicles', {
                 ...vehicle,
-                customerId: finalCustomerId as Id<"customers">,
+                customerId: finalCustomerId,
             });
         }
         
@@ -54,17 +57,15 @@ export const saveCustomerWithVehicles = mutation({
 export const remove = mutation({
     args: { id: v.id('customers') },
     handler: async (ctx, { id }) => {
+        const customerDoc = await ctx.db.get(id);
+        if (!customerDoc) return;
+
         // You might want to check for associated jobs before deleting
         const vehicles = await ctx.db.query('vehicles').withIndex('by_customer', q => q.eq('customerId', id)).collect();
         for (const vehicle of vehicles) {
             await ctx.db.delete(vehicle._id);
         }
         await ctx.db.delete(id);
-    }
-});
-
-export const getAll = query({
-    handler: async (ctx) => {
-        return await ctx.db.query("customers").collect();
+        await customerCount.delete(ctx, customerDoc);
     }
 });

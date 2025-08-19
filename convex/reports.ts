@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { query } from './_generated/server';
+import { servicePerformanceAggregate, technicianPerformanceAggregate, jobStats } from './aggregates';
 
 export const getReportsData = query({
     args: {
@@ -8,23 +9,18 @@ export const getReportsData = query({
         technicianId: v.string(),
     },
     handler: async (ctx, { startDate, endDate, technicianId }) => {
-        const allJobs = await ctx.db.query('jobs').filter(q => 
-            q.and(
-                q.gte(q.field('completionDate'), startDate),
-                q.lte(q.field('completionDate'), endDate),
-                q.eq(q.field('status'), 'completed')
-            )
-        ).collect();
-        
-        const filteredJobs = technicianId === 'all' 
-            ? allJobs 
-            : allJobs.filter(job => job.assignedTechnicianIds?.includes(technicianId as any));
+        // --- Revenue Over Time ---
+        const paginatedJobs = await jobStats.paginate(ctx, {
+            bounds: {
+                lower: { key: ['completed', startDate], inclusive: true },
+                upper: { key: ['completed', endDate], inclusive: true },
+            }
+        });
 
-        // Revenue over time
         const dailyRevenue: { [key: string]: number } = {};
-        for (const job of filteredJobs) {
-            const date = new Date(job.completionDate!).toISOString().split('T')[0];
-            dailyRevenue[date] = (dailyRevenue[date] || 0) + job.totalAmount;
+        for (const { key, sumValue } of paginatedJobs.page) {
+            const date = new Date(key[1]).toISOString().split('T')[0];
+            dailyRevenue[date] = (dailyRevenue[date] || 0) + (sumValue ?? 0);
         }
         const sortedDates = Object.keys(dailyRevenue).sort();
         const revenueOverTime = {
@@ -32,42 +28,56 @@ export const getReportsData = query({
             data: sortedDates.map(date => dailyRevenue[date])
         };
         
-        // Service performance
+        // --- Service Performance ---
         const allServices = await ctx.db.query('services').collect();
-        const servicePerf: { [key: string]: { count: number, revenue: number } } = {};
-        for (const job of filteredJobs) {
-            for (const item of job.jobItems) {
-                if (!servicePerf[item.serviceId]) servicePerf[item.serviceId] = { count: 0, revenue: 0 };
-                servicePerf[item.serviceId].count += 1;
-                servicePerf[item.serviceId].revenue += item.total;
-            }
-        }
-        const servicePerformance = Object.entries(servicePerf).map(([serviceId, data]) => ({
-            service: allServices.find(s => s._id === serviceId)!,
-            ...data
-        })).sort((a,b) => b.revenue - a.revenue);
+        const servicePerfData = await Promise.all(allServices.map(async (service) => {
+            const bounds = {
+                lower: { key: [service._id, startDate], inclusive: true },
+                upper: { key: [service._id, endDate], inclusive: true },
+            };
+            const [count, revenue] = await Promise.all([
+                servicePerformanceAggregate.count(ctx, undefined, { bounds }),
+                servicePerformanceAggregate.sum(ctx, undefined, { bounds }),
+            ]);
+            return { service, count, revenue };
+        }));
+        const servicePerformance = servicePerfData
+            .filter(item => item.count > 0)
+            .sort((a,b) => b.revenue - a.revenue);
 
-        // Technician leaderboard
-        const technicians = await ctx.db.query('users').filter(q => q.eq(q.field('role'), 'technician')).collect();
-        const techLeaderboard: { [key: string]: { completedJobs: number, revenue: number } } = {};
-        for (const tech of technicians) {
-            techLeaderboard[tech._id] = { completedJobs: 0, revenue: 0 };
-        }
-        for (const job of allJobs) {
-            job.assignedTechnicianIds?.forEach(id => {
-                if(techLeaderboard[id]) {
-                    techLeaderboard[id].completedJobs += 1;
-                    techLeaderboard[id].revenue += job.totalAmount; // This might over-attribute revenue
-                }
-            })
-        }
-        const technicianLeaderboard = Object.entries(techLeaderboard).map(([techId, data]) => ({
-            technician: technicians.find(t => t._id === techId)!,
-            ...data,
-            averageJobValue: data.completedJobs > 0 ? data.revenue / data.completedJobs : 0
-        })).sort((a, b) => b.revenue - a.revenue);
+        // --- Technician Leaderboard ---
+        const allTechnicians = await ctx.db.query('users').filter(q => q.eq(q.field('role'), 'technician')).collect();
+        const techLeaderboardData = await Promise.all(allTechnicians.map(async (technician) => {
+             const bounds = {
+                lower: { key: [technician._id, startDate], inclusive: true },
+                upper: { key: [technician._id, endDate], inclusive: true },
+            };
+            const [completedJobs, revenue] = await Promise.all([
+                technicianPerformanceAggregate.count(ctx, undefined, { bounds }),
+                technicianPerformanceAggregate.sum(ctx, undefined, { bounds }),
+            ]);
+            return {
+                technician,
+                completedJobs,
+                revenue,
+                averageJobValue: completedJobs > 0 ? revenue / completedJobs : 0
+            };
+        }));
+        
+        const technicianLeaderboard = techLeaderboardData
+            .filter(item => item.completedJobs > 0)
+            .sort((a, b) => b.revenue - a.revenue);
+        
+        const finalLeaderboard = technicianId === 'all'
+            ? technicianLeaderboard
+            : technicianLeaderboard.filter(item => item.technician._id === technicianId);
 
-        return { revenueOverTime, servicePerformance, technicianLeaderboard, technicians };
+        return { 
+            revenueOverTime, 
+            servicePerformance, 
+            technicianLeaderboard: finalLeaderboard, 
+            technicians: allTechnicians 
+        };
     }
 });
 

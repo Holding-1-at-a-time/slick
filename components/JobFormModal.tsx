@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Job, Customer, Vehicle, Service, PricingMatrix, Upcharge, JobItem, PricingRule, Promotion } from '../types';
+import { Job, Customer, Vehicle, Service, PricingMatrix, Upcharge, JobItem, PricingRule, Promotion, Product } from '../types';
 import Modal from './Modal';
 import { PlusIcon, TrashIcon, SparklesIcon, ExclamationTriangleIcon } from './icons';
 import CustomerFormModal from './CustomerFormModal';
@@ -47,6 +47,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
   const pricingMatrices = data?.pricingMatrices ?? [];
   const upcharges = data?.upcharges ?? [];
   const promotions = data?.promotions ?? [];
+  const products = data?.products ?? [];
 
   const availableVehicles = useMemo(() => {
     return vehicles.filter(v => v.customerId === selectedCustomerId);
@@ -100,6 +101,20 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
   }, [promoCode, promotions, subtotal]);
 
   const totalAmount = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
+
+  const inventoryWarnings = useMemo(() => {
+    const warnings = new Set<string>();
+    jobItems.forEach(item => {
+        const service = services.find(s => s._id === item.serviceId);
+        service?.productsUsed?.forEach(pu => {
+            const product = products.find(p => p._id === pu.productId);
+            if (product && product.stockLevel <= 0) {
+                warnings.add(`'${product.name}' is out of stock.`);
+            }
+        });
+    });
+    return Array.from(warnings);
+  }, [jobItems, services, products]);
 
   const handleMainChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -282,6 +297,14 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
 
           <div className="pt-4 border-t border-gray-700">
               <h3 className="text-lg font-medium text-gray-200 mb-2">Line Items</h3>
+              {inventoryWarnings.length > 0 && (
+                  <div className="p-3 bg-yellow-900/50 border border-yellow-700 rounded-lg mb-4">
+                      <h4 className="font-bold text-yellow-300 text-sm flex items-center"><ExclamationTriangleIcon className="w-5 h-5 mr-2" />Inventory Warning</h4>
+                      <ul className="list-disc list-inside text-yellow-200 text-sm mt-1">
+                          {inventoryWarnings.map(warning => <li key={warning}>{warning}</li>)}
+                      </ul>
+                  </div>
+              )}
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                   {jobItems.map(item => {
                       const service = services.find(s => s._id === item.serviceId);
@@ -295,7 +318,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
                                       <p className="text-xs text-gray-400">Base: ${item.unitPrice.toFixed(2)}</p>
                                   </div>
                                   <div className="text-right">
-                                      <p className="font-bold text-lg text-blue-400">${item.total.toFixed(2)}</p>
+                                      <p className="font-mono text-lg text-blue-400">${item.total.toFixed(2)}</p>
                                       <button type="button" onClick={() => removeJobItem(item.id)} className="p-1 text-gray-500 hover:text-red-500 -mr-1 mt-1"><TrashIcon className="w-4 h-4" /></button>
                                   </div>
                               </div>

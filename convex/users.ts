@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { customerCount, jobStats, productStockStatusAggregate } from "./aggregates";
 
 export const getCurrent = query({
   args: {},
@@ -53,10 +54,8 @@ export const getDashboardData = query({
       .unique();
     if (!currentUser) return null;
 
-    const allJobs = await ctx.db.query("jobs").order("desc").collect();
-
-    // Technician Path
     if (currentUser.role === "technician") {
+      const allJobs = await ctx.db.query("jobs").order("desc").collect();
       const techJobs = allJobs.filter((j) =>
         j.assignedTechnicianIds?.includes(currentUser._id)
       );
@@ -83,7 +82,7 @@ export const getDashboardData = query({
     }
 
     // Admin Path
-    const recentJobsForList = allJobs.slice(0, 10);
+    const recentJobsForList = await ctx.db.query("jobs").order("desc").take(10);
     const jobsWithDetails = await Promise.all(
       recentJobsForList.map(async (job) => {
         const customer = await ctx.db.get(job.customerId);
@@ -92,21 +91,23 @@ export const getDashboardData = query({
       })
     );
 
-    const allCustomers = await ctx.db.query("customers").collect();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-    const jobsLastMonth = allJobs.filter(
-      (j) =>
-        j.status === "completed" &&
-        j.completionDate &&
-        j.completionDate > oneMonthAgo.getTime()
-    );
-    const revenueThisMonth = jobsLastMonth.reduce(
-      (sum, j) => sum + j.totalAmount,
-      0
-    );
-
+    // --- OPTIMIZED STATS ---
+    const totalCustomers = await customerCount.count(ctx);
+    const workOrderCount = await jobStats.count(ctx, { bounds: { prefix: ['workOrder'] } });
+    const invoiceCount = await jobStats.count(ctx, { bounds: { prefix: ['invoice'] } });
+    const activeJobs = workOrderCount + invoiceCount;
+    
+    const oneMonthAgoTimestamp = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const revenueThisMonth = await jobStats.sum(ctx, {
+        bounds: {
+            lower: { key: ['completed', oneMonthAgoTimestamp], inclusive: true },
+            upper: { key: ['completed', Date.now()], inclusive: true },
+        }
+    });
+    
+    const lowStockItems = await productStockStatusAggregate.count(ctx, { bounds: { prefix: [1] } });
+    
+    // --- Chart & Remaining Stats ---
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -118,22 +119,24 @@ export const getDashboardData = query({
         a.startTime >= todayStart.getTime() && a.startTime <= todayEnd.getTime()
     ).length;
 
-    const lowStockItems = (await ctx.db.query("products").collect()).filter(
-      (p) => p.stockLevel <= p.reorderPoint
-    ).length;
-
+    // Chart data still requires fetching some jobs, but this is acceptable for a top-5 chart.
+    const completedJobsLastMonth = await jobStats.paginate(ctx, {
+        bounds: {
+            lower: { key: ['completed', oneMonthAgoTimestamp], inclusive: true },
+            upper: { key: ['completed', Date.now()], inclusive: true },
+        }
+    });
+    
     const allServices = await ctx.db.query("services").collect();
     const revenueByService: Record<string, number> = {};
-    jobsLastMonth.forEach((job) => {
-      job.jobItems.forEach((item) => {
+    for (const { value: job } of completedJobsLastMonth.page) {
+      for (const item of job.jobItems) {
         const service = allServices.find((s) => s._id === item.serviceId);
         if (service) {
-          const serviceName = service.name;
-          revenueByService[serviceName] =
-            (revenueByService[serviceName] || 0) + item.total;
+          revenueByService[service.name] = (revenueByService[service.name] || 0) + item.total;
         }
-      });
-    });
+      }
+    }
 
     const sortedRevenueByService = Object.entries(revenueByService)
       .sort(([, a], [, b]) => b - a)
@@ -145,11 +148,9 @@ export const getDashboardData = query({
     };
 
     const stats = {
-      activeJobs: allJobs.filter((j) =>
-        ["workOrder", "invoice"].includes(j.status)
-      ).length,
+      activeJobs,
       revenueThisMonth,
-      totalCustomers: allCustomers.length,
+      totalCustomers,
       appointmentsToday,
       lowStockItems,
     };
@@ -162,7 +163,6 @@ export const getDashboardData = query({
   },
 });
 
-
 export const create = mutation({
   args: {
     name: v.string(),
@@ -170,8 +170,6 @@ export const create = mutation({
     role: v.union(v.literal('admin'), v.literal('technician')),
   },
   handler: async (ctx, args) => {
-    // This function is a placeholder for a real implementation that would invite users via Clerk.
-    // Directly creating users here is not recommended as they won't have a Clerk account to log in.
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
@@ -210,7 +208,6 @@ export const remove = mutation({
     if (currentUser?.role !== 'admin') throw new Error("Not authorized");
     if (currentUser._id === id) throw new Error("Cannot delete yourself");
     
-    // In a real app, you would also trigger a Clerk user deletion via API.
     await ctx.db.delete(id);
   },
 });

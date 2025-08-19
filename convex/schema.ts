@@ -14,6 +14,7 @@ export default defineSchema({
     logoUrl: v.optional(v.string()),
     defaultLaborRate: v.number(),
     stripeConnectAccountId: v.optional(v.string()),
+    enableAutomaticInventory: v.optional(v.boolean()),
   }),
 
   services: defineTable({
@@ -24,6 +25,10 @@ export default defineSchema({
     serviceIds: v.array(v.id('services')),
     isDealerPackage: v.boolean(),
     estimatedDurationHours: v.optional(v.number()),
+    productsUsed: v.optional(v.array(v.object({
+        productId: v.id('products'),
+        quantity: v.number(),
+    }))),
   }).searchIndex('search_name', { searchField: 'name' }),
 
   pricingMatrices: defineTable({
@@ -112,6 +117,7 @@ export default defineSchema({
     publicLinkKey: v.optional(v.string()),
     visualQuoteStatus: v.optional(v.union(v.literal('pending'), v.literal('complete'), v.literal('failed'))),
     visualQuoteStorageIds: v.optional(v.array(v.id('_storage'))),
+    inventoryDebited: v.optional(v.boolean()),
   }).index('by_customer', ['customerId']).index('by_public_link_key', ['publicLinkKey']),
 
   appointments: defineTable({
@@ -131,7 +137,19 @@ export default defineSchema({
     supplierId: v.id('suppliers'),
     stockLevel: v.number(),
     reorderPoint: v.number(),
+    lastCostPerUnit: v.optional(v.number()),
   }),
+  
+  inventoryLog: defineTable({
+    productId: v.id('products'),
+    change: v.number(),
+    newStockLevel: v.number(),
+    type: v.union(v.literal('received'), v.literal('job_deduction'), v.literal('manual_adjustment')),
+    jobId: v.optional(v.id('jobs')),
+    costPerUnit: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    timestamp: v.number(),
+  }).index('by_product', ['productId']),
 
   promotions: defineTable({
     code: v.string(),

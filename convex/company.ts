@@ -12,6 +12,7 @@ export const save = mutation({
         id: v.id('company'),
         name: v.string(),
         defaultLaborRate: v.number(),
+        enableAutomaticInventory: v.boolean(),
     },
     handler: async (ctx, { id, ...rest }) => {
         await ctx.db.patch(id, rest);

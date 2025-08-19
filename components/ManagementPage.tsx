@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Service, PricingMatrix, Upcharge, Checklist, Customer, Vehicle, Job, Payment, Appointment, User, Promotion } from '../types';
+import { Service, PricingMatrix, Upcharge, Checklist, Customer, Vehicle, Job, Payment, Appointment, User, Promotion, Product } from '../types';
 import { PlusIcon, EditIcon, TrashIcon, PackageIcon, DealerIcon, SearchIcon, CalculatorIcon, UpchargeIcon, ChecklistIcon, UserGroupIcon, CarIcon, BriefcaseIcon, ArrowRightCircleIcon, ReceiptPercentIcon, CreditCardIcon, CalendarIcon, LinkIcon, ExclamationTriangleIcon } from './icons';
 import ServiceFormModal from './ServiceFormModal';
 import PricingMatrixFormModal from './PricingMatrixFormModal';
@@ -198,6 +198,8 @@ const ManagementPage: React.FC = () => {
     const vehicles = data?.vehicles ?? [];
     const jobs = data?.jobs ?? [];
     const appointments = data?.appointments ?? [];
+    const products = data?.products ?? [];
+    const suppliers = data?.suppliers ?? [];
 
     const deleteService = useMutation(api.services.remove);
     const deleteMatrix = useMutation(api.pricing.deleteMatrix);
@@ -321,7 +323,7 @@ const ManagementPage: React.FC = () => {
       </section>
       
       {/* Modals */}
-      <ServiceFormModal isOpen={isServiceModalOpen} onClose={handleCloseModals} serviceToEdit={serviceToEdit} />
+      <ServiceFormModal isOpen={isServiceModalOpen} onClose={handleCloseModals} serviceToEdit={serviceToEdit} products={products} />
       <PricingMatrixFormModal isOpen={isMatrixModalOpen} onClose={handleCloseModals} matrixToEdit={matrixToEdit} />
       <UpchargeFormModal isOpen={isUpchargeModalOpen} onClose={handleCloseModals} upchargeToEdit={upchargeToEdit} />
       <ChecklistFormModal isOpen={isChecklistModalOpen} onClose={handleCloseModals} checklistToEdit={checklistToEdit} />
