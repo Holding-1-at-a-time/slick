@@ -33,5 +33,6 @@ export type Promotion = Doc<"promotions">;
 export type Campaign = Doc<"campaigns">;
 export type InventoryLog = Doc<"inventoryLog">;
 export type Notification = Doc<"notifications">;
+export type LearnedProductServiceMapping = Doc<"learnedProductServiceMapping">;
 
 export type Page = 'dashboard' | 'management' | 'schedule' | 'settings' | 'reports' | 'inventory' | 'marketing' | 'stripe-onboarding' | 'knowledge-base';

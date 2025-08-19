@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react';
 import { useConvexAuth, useQuery } from 'convex/react';
 import { api } from './convex/_generated/api';

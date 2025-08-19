@@ -180,4 +180,12 @@ export default defineSchema({
     isRead: v.boolean(),
     timestamp: v.number(),
   }).index('by_read_status', ['isRead']),
+
+  learnedProductServiceMapping: defineTable({
+    serviceId: v.id('services'),
+    productId: v.id('products'),
+    associationScore: v.number(),
+    lastUpdatedAt: v.number(),
+  }).index("by_service_product", ["serviceId", "productId"])
+   .index("by_service", ["serviceId"]),
 });

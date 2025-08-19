@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Service, Product } from '../types';
 import Modal from './Modal';
-import { MagicIcon, PlusIcon, TrashIcon } from './icons';
+import { MagicIcon, PlusIcon, TrashIcon, LightBulbIcon } from './icons';
 
 interface ServiceFormModalProps {
   isOpen: boolean;
@@ -27,6 +27,7 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
   
   const company = useQuery(api.company.get);
   const enableSmartInventory = company?.enableSmartInventory;
+  const learnedSuggestions = useQuery(api.learning.getLearnedSuggestionsForService, serviceToEdit ? { serviceId: serviceToEdit._id } : "skip");
 
   const allServices = useQuery(api.services.getAll);
   const createService = useMutation(api.services.create);
@@ -119,6 +120,23 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
         setIsSuggestingProducts(false);
     }
   };
+  
+  const addLearnedProduct = (productId: Id<'products'>) => {
+    setFormData(prev => {
+        const productExists = (prev.productsUsed || []).some(p => p.productId === productId);
+        if (productExists) return prev;
+        return {
+            ...prev,
+            productsUsed: [...(prev.productsUsed || []), { productId, quantity: 1 }]
+        };
+    });
+  };
+
+  const availableLearnedSuggestions = useMemo(() => {
+    if (!learnedSuggestions) return [];
+    const currentProductIds = new Set((formData.productsUsed || []).map(p => p.productId));
+    return learnedSuggestions.filter(suggestion => !currentProductIds.has(suggestion._id));
+  }, [learnedSuggestions, formData.productsUsed]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,6 +188,28 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
                     <button type="button" onClick={handleSuggestProducts} disabled={isSuggestingProducts || !formData.name} className="flex items-center space-x-1 text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"><MagicIcon className="w-4 h-4" /><span>{isSuggestingProducts ? 'Suggesting...' : 'AI Suggest Products'}</span></button>
                 )}
             </div>
+            
+            {serviceToEdit && availableLearnedSuggestions && availableLearnedSuggestions.length > 0 && (
+              <div className="mb-4 p-3 bg-gray-900 rounded-md">
+                  <h5 className="text-xs font-semibold text-gray-400 mb-2 flex items-center">
+                      <LightBulbIcon className="w-4 h-4 mr-2 text-yellow-400" />
+                      Suggestions from past jobs (click to add):
+                  </h5>
+                  <div className="flex flex-wrap gap-2">
+                      {availableLearnedSuggestions.map(product => (
+                          <button
+                              key={product._id}
+                              type="button"
+                              onClick={() => addLearnedProduct(product._id)}
+                              className="text-xs px-2 py-1 rounded-full border bg-gray-700 border-gray-600 hover:bg-yellow-600 hover:border-yellow-500 hover:text-white transition-colors"
+                          >
+                              {product.name}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+            )}
+
             <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
                 {(formData.productsUsed || []).map((p, index) => (
                     <div key={index} className="flex items-center gap-2 p-2 bg-gray-900 rounded-md">

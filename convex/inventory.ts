@@ -140,6 +140,7 @@ export const debitInventoryForJob = internalMutation({
             }
         }
         await ctx.db.patch(jobId, { inventoryDebited: true });
+        await ctx.runMutation(internal.learning.updateLearnedMappings, { jobId });
     }
 });
 
