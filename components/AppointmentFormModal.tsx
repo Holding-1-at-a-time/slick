@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -62,9 +61,13 @@ const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({ isOpen, onC
     try {
         const slots = await suggestSlotsAction({ jobId });
         setSuggestedSlots(slots || []);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error suggesting slots:", error);
-        alert("Failed to suggest time slots.");
+         if (error?.data?.kind === 'RateLimitError') {
+            alert("You've made too many AI requests. Please wait a moment before trying again.");
+        } else {
+            alert("Failed to suggest time slots.");
+        }
     } finally {
         setIsSuggesting(false);
     }

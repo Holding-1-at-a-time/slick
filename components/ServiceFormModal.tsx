@@ -77,8 +77,13 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
     try {
         const description = await generateDescriptionAction({ serviceName: formData.name });
         setFormData(prev => ({ ...prev, description: description.trim() }));
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error generating description:", error);
+        if (error?.data?.kind === 'RateLimitError') {
+            alert("You've made too many AI requests. Please wait a moment before trying again.");
+        } else {
+            alert("An error occurred while generating the description.");
+        }
     } finally {
         setIsGenerating(false);
     }
@@ -113,9 +118,13 @@ const ServiceFormModal: React.FC<ServiceFormModalProps> = ({ isOpen, onClose, se
                 .map(productId => ({ productId, quantity: 1 }));
             return { ...prev, productsUsed: [...(prev.productsUsed || []), ...newProductsToAdd] };
         });
-    } catch(e) {
-        console.error(e);
-        alert("AI product suggestion failed.");
+    } catch (error: any) {
+        console.error("Error suggesting products:", error);
+        if (error?.data?.kind === 'RateLimitError') {
+            alert("You've made too many AI requests. Please wait a moment before trying again.");
+        } else {
+            alert("An error occurred while suggesting products.");
+        }
     } finally {
         setIsSuggestingProducts(false);
     }

@@ -49,9 +49,13 @@ const KnowledgeBasePage = () => {
         try {
             const result = await askQuestion({ prompt: question });
             setAnswer(result);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error asking question:', error);
-            setAnswer({ answer: "Sorry, I encountered an error. The AI model may be unavailable or the query could not be processed. Please check the console for details.", context: null });
+            if (error?.data?.kind === 'RateLimitError') {
+                 setAnswer({ answer: "You've asked too many questions. Please wait a moment before trying again.", context: null });
+            } else {
+                setAnswer({ answer: "Sorry, I encountered an error. The AI model may be unavailable or the query could not be processed. Please check the console for details.", context: null });
+            }
         } finally {
             setIsLoading(false);
         }

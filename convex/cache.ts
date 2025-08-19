@@ -28,10 +28,3 @@ export const productSuggestionCache = new ActionCache(components.actionCache, {
   name: "product-suggestions-v1",
   ttl: 1000 * 60 * 60 * 24, // 1 day
 });
-
-// Cache for conversational inventory questions, valid for 5 minutes.
-export const inventoryQuestionCache = new ActionCache(components.actionCache, {
-    action: internal.ai.internalAnswerInventoryQuestion,
-    name: "inventory-questions-v1",
-    ttl: 1000 * 60 * 5, // 5 minutes
-});

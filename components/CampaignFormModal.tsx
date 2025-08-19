@@ -23,9 +23,18 @@ const CampaignFormModal: React.FC<CampaignFormModalProps> = ({ isOpen, onClose, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For new campaigns, we only need the goal. The retrier will handle generation.
-    await saveCampaign({ data: { goal } });
-    onClose();
+    try {
+      // For new campaigns, we only need the goal. The retrier will handle generation.
+      await saveCampaign({ data: { goal } });
+      onClose();
+    } catch (error: any) {
+        console.error("Error creating campaign:", error);
+        if (error?.data?.kind === 'RateLimitError') {
+            alert("You have exceeded the limit for AI campaign generation. Please wait a moment before trying again.");
+        } else {
+            alert("An error occurred while creating the campaign.");
+        }
+    }
   };
 
   return (

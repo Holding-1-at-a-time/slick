@@ -36,8 +36,8 @@ export const getReportsData = query({
                 upper: { key: [service._id, endDate], inclusive: true },
             };
             const [count, revenue] = await Promise.all([
-                servicePerformanceAggregate.count(ctx, undefined, { bounds }),
-                servicePerformanceAggregate.sum(ctx, undefined, { bounds }),
+                servicePerformanceAggregate.count(ctx, { bounds }),
+                servicePerformanceAggregate.sum(ctx, { bounds }),
             ]);
             return { service, count, revenue };
         }));
@@ -53,8 +53,8 @@ export const getReportsData = query({
                 upper: { key: [technician._id, endDate], inclusive: true },
             };
             const [completedJobs, revenue] = await Promise.all([
-                technicianPerformanceAggregate.count(ctx, undefined, { bounds }),
-                technicianPerformanceAggregate.sum(ctx, undefined, { bounds }),
+                technicianPerformanceAggregate.count(ctx, { bounds }),
+                technicianPerformanceAggregate.sum(ctx, { bounds }),
             ]);
             return {
                 technician,

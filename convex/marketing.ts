@@ -1,7 +1,16 @@
 import { v } from 'convex/values';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, mutation, query, MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { retrier } from './retrier';
+import { rateLimiter } from './rateLimiter';
+
+const getUserId = async (ctx: MutationCtx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+        throw new Error("Not authenticated");
+    }
+    return identity.subject;
+};
 
 export const getData = query({
     handler: async (ctx) => {
@@ -51,6 +60,9 @@ export const saveCampaign = mutation({
             // Standard edit for a campaign that's already been generated.
             await ctx.db.patch(id, { goal: data.goal, subject: data.subject, body: data.body });
         } else {
+            const userId = await getUserId(ctx);
+            await rateLimiter.limit(ctx, "heavyAI", { key: userId, throws: true });
+            
             // New campaign: create a placeholder and kick off the resilient generation.
             const campaignId = await ctx.db.insert('campaigns', {
                 goal: data.goal,

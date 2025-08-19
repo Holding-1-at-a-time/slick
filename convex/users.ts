@@ -129,7 +129,7 @@ export const getDashboardData = query({
     
     const allServices = await ctx.db.query("services").collect();
     const revenueByService: Record<string, number> = {};
-    for (const { value: job } of completedJobsLastMonth.page) {
+    for (const job of completedJobsLastMonth.page) {
       for (const item of job.jobItems) {
         const service = allServices.find((s) => s._id === item.serviceId);
         if (service) {

@@ -1,3 +1,4 @@
+
 import { v } from 'convex/values';
 import { mutation, action, query } from './_generated/server';
 
@@ -13,6 +14,9 @@ export const save = mutation({
         name: v.string(),
         defaultLaborRate: v.number(),
         enableSmartInventory: v.boolean(),
+        businessHours: v.optional(v.any()),
+        bookingLeadTimeDays: v.optional(v.number()),
+        slotDurationMinutes: v.optional(v.number()),
     },
     handler: async (ctx, { id, ...rest }) => {
         await ctx.db.patch(id, rest);

@@ -1,11 +1,20 @@
 import { components, internal } from "./_generated/api";
 import { RAG } from "@convex-dev/rag";
 import { openai } from "@ai-sdk/openai";
-import { action, internalAction } from "./_generated/server";
+import { action, internalAction, ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { assert } from "convex-helpers";
 import { ragQuestionCache } from "./cache";
+import { rateLimiter } from "./rateLimiter";
+
+const getUserId = async (ctx: ActionCtx) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+  return identity.subject;
+};
 
 export const rag = new RAG(components.rag, {
   textEmbeddingModel: openai.embedding("text-embedding-3-small"),
@@ -31,6 +40,8 @@ export const askQuestion = action({
         prompt: v.string(),
     },
     handler: async (ctx, args): Promise<{ answer: string; context: any }> => {
+        const userId = await getUserId(ctx);
+        await rateLimiter.limit(ctx, "generalAI", { key: userId, throws: true });
         return await ragQuestionCache.fetch(ctx, args);
     }
 });

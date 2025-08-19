@@ -1,6 +1,6 @@
 import React from 'react';
 import { Page, User } from '../types';
-import { HomeIcon, BriefcaseIcon, CogIcon, CalendarIcon, ChartBarIcon, CubeIcon, MegaphoneIcon, BookOpenIcon } from './icons';
+import { HomeIcon, BriefcaseIcon, CogIcon, CalendarIcon, ChartBarIcon, CubeIcon, MegaphoneIcon, BookOpenIcon, SparklesIcon } from './icons';
 
 interface SidebarProps {
   activePage: Page;
@@ -68,6 +68,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, currentUse
                     page="inventory"
                     label="Inventory"
                     icon={<CubeIcon className="w-6 h-6" />}
+                    activePage={activePage}
+                    setActivePage={setActivePage}
+                />
+                 <NavLink 
+                    page="assistant"
+                    label="Assistant"
+                    icon={<SparklesIcon className="w-6 h-6" />}
                     activePage={activePage}
                     setActivePage={setActivePage}
                 />

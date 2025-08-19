@@ -1,12 +1,21 @@
 import { v } from 'convex/values';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, mutation, query, MutationCtx } from './_generated/server';
 import { Id } from './_generated/dataModel';
 import { customAlphabet } from 'nanoid';
 import { retrier } from './retrier';
 import { api, internal } from './_generated/api';
 import { jobStats, servicePerformanceAggregate, technicianPerformanceAggregate } from './aggregates';
+import { rateLimiter } from './rateLimiter';
 
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
+
+const getUserId = async (ctx: MutationCtx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+        throw new Error("Not authenticated");
+    }
+    return identity.subject;
+};
 
 // --- Queries ---
 
@@ -198,6 +207,9 @@ export const initiateVisualQuote = mutation({
         storageIds: v.array(v.id('_storage')),
     },
     handler: async (ctx, { jobId, storageIds }) => {
+        const userId = await getUserId(ctx);
+        await rateLimiter.limit(ctx, "heavyAI", { key: userId, throws: true });
+
         await ctx.db.patch(jobId, {
             visualQuoteStatus: 'pending',
             visualQuoteStorageIds: storageIds,

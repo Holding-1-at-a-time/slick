@@ -1,16 +1,27 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { v } from "convex/values";
-import { action, internalAction, internalQuery } from "./_generated/server";
+import { action, internalAction, internalQuery, ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { productAttributeCache, productSuggestionCache, serviceDescriptionCache, inventoryQuestionCache } from "./cache";
+import { productAttributeCache, productSuggestionCache, serviceDescriptionCache } from "./cache";
+import { rateLimiter } from "./rateLimiter";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+const getUserId = async (ctx: ActionCtx) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+  return identity.subject;
+};
 
 // --- Service Description Generation ---
 export const generateServiceDescription = action({
   args: { serviceName: v.string() },
   handler: async (ctx, args): Promise<string> => {
+    const userId = await getUserId(ctx);
+    await rateLimiter.limit(ctx, "generalAI", { key: userId, throws: true });
     return await serviceDescriptionCache.fetch(ctx, args);
   },
 });
@@ -108,6 +119,9 @@ export const suggestQuoteFromPhotos = internalAction({
 export const suggestAppointmentSlots = action({
     args: { jobId: v.id('jobs') },
     handler: async (ctx, { jobId }) => {
+        const userId = await getUserId(ctx);
+        await rateLimiter.limit(ctx, "generalAI", { key: userId, throws: true });
+
         const job = await ctx.runQuery(api.jobs.get, { id: jobId });
         const allAppointments = await ctx.runQuery(api.appointments.getAll);
         const allServices = await ctx.runQuery(api.services.getAll);
@@ -179,7 +193,11 @@ export const generateCampaignContent = internalAction({
 // --- Smart Inventory ---
 export const suggestProductAttributes = action({
   args: { productName: v.string() },
-  handler: (ctx, args) => productAttributeCache.fetch(ctx, args),
+  handler: async (ctx, args) => {
+    const userId = await getUserId(ctx);
+    await rateLimiter.limit(ctx, "generalAI", { key: userId, throws: true });
+    return productAttributeCache.fetch(ctx, args);
+  },
 });
 
 export const internalSuggestProductAttributes = internalAction({
@@ -205,7 +223,11 @@ export const internalSuggestProductAttributes = internalAction({
 
 export const suggestProductsForService = action({
     args: { serviceName: v.string(), serviceDescription: v.string() },
-    handler: (ctx, args) => productSuggestionCache.fetch(ctx, args),
+    handler: async (ctx, args) => {
+        const userId = await getUserId(ctx);
+        await rateLimiter.limit(ctx, "generalAI", { key: userId, throws: true });
+        return productSuggestionCache.fetch(ctx, args);
+    },
 });
 
 export const internalSuggestProductsForService = internalAction({
@@ -234,41 +256,6 @@ export const internalSuggestProductsForService = internalAction({
         });
         const result = JSON.parse(response.text);
         return (result.productIds || []) as Id<'products'>[];
-    }
-});
-
-export const answerInventoryQuestion = action({
-    args: { query: v.string() },
-    handler: (ctx, args) => inventoryQuestionCache.fetch(ctx, args),
-});
-
-export const internalAnswerInventoryQuestion = internalAction({
-    args: { query: v.string() },
-    handler: async (ctx, { query }) => {
-        const allProducts = await ctx.runQuery(internal.ai.getAllProducts);
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `You are an AI assistant for an inventory system. A user is asking a question about stock. Identify the product they are asking about from the list of available products.
-            Respond ONLY with a JSON object with one key: "productName". The value should be the full name of the product you identified. If you cannot confidently identify a single product, return {"productName": null}.
-
-            Available products:
-            ${JSON.stringify(allProducts.map(p => p.name))}
-
-            User question: "${query}"`,
-            config: { responseMimeType: "application/json" }
-        });
-
-        const result = JSON.parse(response.text);
-        if (!result.productName) {
-            return "Sorry, I couldn't identify the product you're asking about. Could you be more specific?";
-        }
-        
-        const product = allProducts.find(p => p.name === result.productName);
-        if (!product) {
-             return `I found a product match for "${result.productName}", but it doesn't seem to be in the inventory list anymore.`;
-        }
-
-        return `We have ${product.stockLevel} ${product.unit || ''}(s) of ${product.name} left in stock.`;
     }
 });
 

@@ -57,9 +57,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, pr
         const result = await suggestAttributes({ productName: formData.name });
         if (result.category) setFormData(prev => ({ ...prev, category: result.category }));
         if (result.unit) setFormData(prev => ({ ...prev, unit: result.unit }));
-    } catch (e) {
-        console.error(e);
-        alert("AI suggestion failed.");
+    } catch (error: any) {
+        console.error("Error suggesting details:", error);
+        if (error?.data?.kind === 'RateLimitError') {
+            alert("You've made too many AI requests. Please wait a moment before trying again.");
+        } else {
+            alert("AI suggestion failed.");
+        }
     } finally {
         setIsSuggesting(false);
     }

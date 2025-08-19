@@ -1,3 +1,4 @@
+
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
@@ -15,6 +16,17 @@ export default defineSchema({
     defaultLaborRate: v.number(),
     stripeConnectAccountId: v.optional(v.string()),
     enableSmartInventory: v.optional(v.boolean()),
+    businessHours: v.optional(v.object({
+        monday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        tuesday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        wednesday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        thursday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        friday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        saturday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+        sunday: v.optional(v.object({ start: v.string(), end: v.string(), enabled: v.boolean() })),
+    })),
+    bookingLeadTimeDays: v.optional(v.number()),
+    slotDurationMinutes: v.optional(v.number()),
   }),
 
   services: defineTable({
@@ -188,4 +200,14 @@ export default defineSchema({
     lastUpdatedAt: v.number(),
   }).index("by_service_product", ["serviceId", "productId"])
    .index("by_service", ["serviceId"]),
+  
+  // Tables for @convex-dev/agent
+  threads: defineTable({}),
+  messages: defineTable({
+    threadId: v.id("threads"),
+    role: v.string(), // "user", "assistant", or "tool"
+    content: v.string(), // The text content of the message, or tool results
+    toolCallId: v.optional(v.string()),
+    toolCalls: v.optional(v.any()),
+  }).index("by_threadId", ["threadId"]),
 });

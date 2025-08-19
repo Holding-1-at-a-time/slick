@@ -1,80 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { useQuery, useMutation, useAction } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Product, Supplier } from '../types';
-import { PlusIcon, EditIcon, TrashIcon, SearchIcon, CubeIcon, ArchiveBoxArrowDownIcon, DocumentTextIcon, SparklesIcon } from './icons';
+import { PlusIcon, EditIcon, TrashIcon, SearchIcon, CubeIcon, ArchiveBoxArrowDownIcon, DocumentTextIcon } from './icons';
 import ProductFormModal from './ProductFormModal';
 import { Id } from '../convex/_generated/dataModel';
 import ReceiveStockModal from './ReceiveStockModal';
 import InventoryLogModal from './InventoryLogModal';
-
-const ConversationalSearch = () => {
-    const [messages, setMessages] = useState<{ sender: 'user' | 'ai', text: string }[]>([]);
-    const [query, setQuery] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const answerInventoryQuestion = useAction(api.ai.answerInventoryQuestion);
-
-    const handleSend = async () => {
-        if (!query.trim()) return;
-        const userMessage = { sender: 'user' as const, text: query };
-        setMessages(prev => [...prev, userMessage]);
-        setQuery('');
-        setIsLoading(true);
-
-        try {
-            const answer = await answerInventoryQuestion({ query });
-            setMessages(prev => [...prev, { sender: 'ai' as const, text: answer }]);
-        } catch (e) {
-            console.error(e);
-            setMessages(prev => [...prev, { sender: 'ai' as const, text: "Sorry, I couldn't process that request." }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <section className="mb-8 bg-gray-800 rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-                <SparklesIcon className="w-6 h-6 mr-3 text-blue-400"/>
-                Chat with Your Inventory
-            </h2>
-             <div className="space-y-3 mb-4 h-40 overflow-y-auto p-3 bg-gray-900/50 rounded-md">
-                {messages.map((msg, index) => (
-                    <div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-lg ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-                           {msg.text}
-                        </div>
-                    </div>
-                ))}
-                {isLoading && (
-                     <div className="flex justify-start">
-                        <div className="max-w-xs px-4 py-2 rounded-lg bg-gray-700 text-gray-400 italic">
-                           Thinking...
-                        </div>
-                    </div>
-                )}
-                {messages.length === 0 && !isLoading && (
-                    <div className="flex items-center justify-center h-full">
-                        <p className="text-gray-500 text-sm">Ask a question like "How many microfiber towels are left?"</p>
-                    </div>
-                )}
-            </div>
-            <div className="flex space-x-2">
-                <input
-                    type="text"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !isLoading && handleSend()}
-                    placeholder="Ask about your stock..."
-                    className="w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                />
-                <button onClick={handleSend} disabled={isLoading || !query.trim()} className="bg-primary hover:opacity-90 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-500">
-                    Send
-                </button>
-            </div>
-        </section>
-    );
-};
 
 const InventoryPage: React.FC = () => {
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -86,12 +18,10 @@ const InventoryPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const data = useQuery(api.inventory.getData);
-    const company = useQuery(api.company.get);
     const products = data?.products ?? [];
     const suppliers = data?.suppliers ?? [];
     const deleteProduct = useMutation(api.inventory.deleteProduct);
 
-    const enableSmartInventory = company?.enableSmartInventory;
     const supplierMap = useMemo(() => new Map<Id<'suppliers'>, string>(suppliers.map(s => [s._id, s.name])), [suppliers]);
 
     const filteredProducts = useMemo(() => {
@@ -142,8 +72,6 @@ const InventoryPage: React.FC = () => {
                     <button onClick={() => { setProductToEdit(null); setIsProductModalOpen(true); }} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"><PlusIcon className="w-5 h-5 mr-2" />Add Product</button>
                 </div>
             </header>
-
-            {enableSmartInventory && <ConversationalSearch />}
 
             <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-6"><div className="relative"><input type="text" placeholder="Search products..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 pl-10 text-white"/><SearchIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" /></div></div>
 

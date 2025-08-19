@@ -232,9 +232,13 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ isOpen, onClose, jobToEdit 
 
         await initiateVisualQuote({ jobId: jobIdToUse, storageIds });
         setVisualQuoteFiles([]);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error with Visual Quoting:", error);
-        alert("Failed to start photo analysis. Please check the console for details.");
+        if (error?.data?.kind === 'RateLimitError') {
+            alert("You have exceeded the limit for photo analysis. Please wait a moment before trying again.");
+        } else {
+            alert("Failed to start photo analysis. Please check the console for details.");
+        }
     } finally {
         setIsUploading(false);
     }
