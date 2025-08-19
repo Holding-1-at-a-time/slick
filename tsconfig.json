@@ -11,17 +11,17 @@
     ],
     "skipLibCheck": true,
     "types": [
-      "node"
+      "node",
+      "./convex/_generated"
     ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "convex/_generated/*": ["./convex/_generated/*"]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true

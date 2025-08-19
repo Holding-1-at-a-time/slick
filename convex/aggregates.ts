@@ -1,6 +1,6 @@
 import { TableAggregate, DirectAggregate } from "@convex-dev/aggregate";
 import { components } from "./_generated/api";
-import { DataModel, Doc, Id } from "./_generated/dataModel";
+import { DataModel, Id } from "./_generated/dataModel";
 
 // Aggregate for total customer count.
 export const customerCount = new TableAggregate<{
